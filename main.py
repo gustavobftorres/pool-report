@@ -87,9 +87,10 @@ async def health_check():
 async def generate_report(request: ReportRequest):
     """
     Generate and send a pool performance report via email.
+    Supports both single pool and multi-pool comparison reports.
     
     Args:
-        request: ReportRequest containing pool_address and recipient_email
+        request: ReportRequest containing pool_addresses (list) and recipient_email
         
     Returns:
         ReportResponse with status, timestamp, and pool information
@@ -98,44 +99,85 @@ async def generate_report(request: ReportRequest):
         HTTPException: If report generation or email sending fails
     """
     try:
-        print(f"📊 Generating report for pool: {request.pool_address}")
-        
         # Initialize services
         calculator = MetricsCalculator()
         email_sender = EmailSender()
         
-        # Calculate metrics
-        print("🔍 Fetching pool data and calculating metrics...")
-        metrics = await calculator.calculate_pool_metrics(request.pool_address)
+        # Determine if single or multiple pools
+        is_multi_pool = len(request.pool_addresses) > 1
         
-        print(f"✅ Metrics calculated for {metrics.pool_name}")
-        print(f"   TVL: ${metrics.tvl_current:,.2f} ({metrics.tvl_change_percent:+.2f}%)")
-        print(f"   Volume (15d): ${metrics.volume_15_days:,.2f}")
-        print(f"   Fees (15d): ${metrics.fees_15_days:,.2f}")
+        if is_multi_pool:
+            # Multi-pool comparison report
+            print(f"📊 Generating comparison report for {len(request.pool_addresses)} pools...")
+            
+            # Calculate metrics for all pools
+            print("🔍 Fetching data for all pools...")
+            multi_metrics = await calculator.calculate_multi_pool_metrics(request.pool_addresses)
+            
+            print(f"✅ Metrics calculated for {len(multi_metrics.pools)} pools")
+            print(f"   Total Fees: ${multi_metrics.total_fees:,.2f}")
+            print(f"   Weighted APR: {multi_metrics.total_apr * 100:.2f}%")
+            
+            # Format metrics for email
+            metrics_data = calculator.format_multi_pool_metrics_for_email(multi_metrics)
+            
+            # Send email
+            print(f"📧 Sending comparison report to {request.recipient_email}...")
+            await email_sender.send_pool_report(
+                recipient_email=request.recipient_email,
+                pool_name=f"{len(multi_metrics.pools)} Pools",
+                metrics_data=metrics_data,
+                multi_pool=True
+            )
+            
+            print(f"✅ Comparison report sent successfully!")
+            
+            # Return response
+            return ReportResponse(
+                status="sent",
+                timestamp=datetime.utcnow(),
+                pool_name=f"Comparison of {len(multi_metrics.pools)} Pools",
+                pool_address=", ".join(request.pool_addresses[:3]) + ("..." if len(request.pool_addresses) > 3 else "")
+            )
         
-        # Get pool data for token info
-        pool_data = await calculator.api.get_current_pool_data(request.pool_address)
-        
-        # Format metrics for email
-        metrics_data = calculator.format_metrics_for_email(metrics, pool_data)
-        
-        # Send email
-        print(f"📧 Sending report to {request.recipient_email}...")
-        await email_sender.send_pool_report(
-            recipient_email=request.recipient_email,
-            pool_name=metrics.pool_name,
-            metrics_data=metrics_data
-        )
-        
-        print(f"✅ Report sent successfully!")
-        
-        # Return response
-        return ReportResponse(
-            status="sent",
-            timestamp=datetime.utcnow(),
-            pool_name=metrics.pool_name,
-            pool_address=request.pool_address
-        )
+        else:
+            # Single pool report
+            pool_address = request.pool_addresses[0]
+            print(f"📊 Generating report for pool: {pool_address}")
+            
+            # Calculate metrics
+            print("🔍 Fetching pool data and calculating metrics...")
+            metrics = await calculator.calculate_pool_metrics(pool_address)
+            
+            print(f"✅ Metrics calculated for {metrics.pool_name}")
+            print(f"   TVL: ${metrics.tvl_current:,.2f} ({metrics.tvl_change_percent:+.2f}%)")
+            print(f"   Volume (15d): ${metrics.volume_15_days:,.2f}")
+            print(f"   Fees (15d): ${metrics.fees_15_days:,.2f}")
+            
+            # Get pool data for token info
+            pool_data = await calculator.api.get_current_pool_data(pool_address)
+            
+            # Format metrics for email
+            metrics_data = calculator.format_metrics_for_email(metrics, pool_data)
+            
+            # Send email
+            print(f"📧 Sending report to {request.recipient_email}...")
+            await email_sender.send_pool_report(
+                recipient_email=request.recipient_email,
+                pool_name=metrics.pool_name,
+                metrics_data=metrics_data,
+                multi_pool=False
+            )
+            
+            print(f"✅ Report sent successfully!")
+            
+            # Return response
+            return ReportResponse(
+                status="sent",
+                timestamp=datetime.utcnow(),
+                pool_name=metrics.pool_name,
+                pool_address=pool_address
+            )
         
     except BalancerAPIError as e:
         print(f"❌ Balancer API error: {str(e)}")

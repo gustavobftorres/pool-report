@@ -5,7 +5,7 @@ Analyzes current metrics vs 15 days ago.
 from datetime import datetime, timedelta
 from typing import Dict, Any
 from services.balancer_api import BalancerAPI
-from models import PoolMetrics
+from models import PoolMetrics, MultiPoolMetrics
 
 
 class MetricsCalculator:
@@ -13,6 +13,23 @@ class MetricsCalculator:
     
     def __init__(self):
         self.api = BalancerAPI()
+    
+    def _generate_pool_url(self, pool_data: Dict[str, Any], pool_address: str) -> str:
+        """
+        Generate the Balancer.fi URL for a pool.
+        Format: https://balancer.fi/pools/[blockchain]/[version]/[pool_address]
+        
+        Args:
+            pool_data: Pool data from API (contains _api_version and _blockchain)
+            pool_address: Pool address
+            
+        Returns:
+            Full URL to view pool on Balancer.fi
+        """
+        blockchain = pool_data.get("_blockchain", "ethereum")
+        version = pool_data.get("_api_version", "v2")
+        
+        return f"https://balancer.fi/pools/{blockchain}/{version}/{pool_address.lower()}"
     
     async def calculate_pool_metrics(self, pool_address: str) -> PoolMetrics:
         """
@@ -76,6 +93,9 @@ class MetricsCalculator:
             fifteen_days_ago_ts
         )
         
+        # Generate Balancer.fi URL
+        pool_url = self._generate_pool_url(current_pool, pool_address)
+        
         # Create and return metrics
         return PoolMetrics(
             tvl_current=tvl_current,
@@ -85,7 +105,8 @@ class MetricsCalculator:
             fees_15_days=fees_15_days,
             apr_current=apr_current,
             pool_name=current_pool.get("name", "Unknown Pool"),
-            pool_address=pool_address
+            pool_address=pool_address,
+            pool_url=pool_url
         )
     
     def _calculate_period_metrics(
@@ -178,6 +199,7 @@ class MetricsCalculator:
         return {
             "pool_name": metrics.pool_name,
             "pool_address": metrics.pool_address,
+            "pool_url": metrics.pool_url,
             "pool_tokens": tokens,
             "tvl_current": f"${metrics.tvl_current:,.2f}",
             "tvl_15d_ago": f"${metrics.tvl_15_days_ago:,.2f}",
@@ -186,5 +208,119 @@ class MetricsCalculator:
             "volume_15d": f"${metrics.volume_15_days:,.2f}",
             "fees_15d": f"${metrics.fees_15_days:,.2f}",
             "apr_current": f"{metrics.apr_current * 100:.2f}%" if metrics.apr_current else "N/A",
+            "timestamp": datetime.utcnow().strftime("%B %d, %Y at %H:%M UTC")
+        }
+    
+    async def calculate_multi_pool_metrics(self, pool_addresses: list[str]) -> MultiPoolMetrics:
+        """
+        Calculate metrics for multiple pools and rank them.
+        
+        Args:
+            pool_addresses: List of pool addresses
+            
+        Returns:
+            MultiPoolMetrics with rankings and totals
+        """
+        # Calculate metrics for each pool
+        pools_metrics = []
+        for address in pool_addresses:
+            try:
+                metrics = await self.calculate_pool_metrics(address)
+                pools_metrics.append(metrics)
+                print(f"✅ Calculated metrics for {metrics.pool_name}")
+            except Exception as e:
+                print(f"⚠️  Skipping pool {address}: {str(e)}")
+                continue
+        
+        if not pools_metrics:
+            raise ValueError("No valid pool metrics could be calculated")
+        
+        # Rank by TVL increase (absolute change from 15 days ago)
+        sorted_by_tvl_increase = sorted(
+            pools_metrics,
+            key=lambda p: p.tvl_current - p.tvl_15_days_ago,
+            reverse=True
+        )[:3]
+        top_3_tvl = [
+            (
+                p.pool_name, 
+                p.tvl_current - p.tvl_15_days_ago,  # Absolute increase
+                p.tvl_change_percent,  # Percentage change
+                p.pool_url  # URL to view pool
+            )
+            for p in sorted_by_tvl_increase
+        ]
+        
+        # Rank by volume (descending) - showing total volume and percentage of portfolio
+        total_volume = sum(p.volume_15_days for p in pools_metrics)
+        sorted_by_volume = sorted(
+            pools_metrics, 
+            key=lambda p: p.volume_15_days, 
+            reverse=True
+        )[:3]
+        top_3_volume = [
+            (
+                p.pool_name, 
+                p.volume_15_days,
+                (p.volume_15_days / total_volume * 100) if total_volume > 0 else 0,  # Percentage of total
+                p.pool_url  # URL to view pool
+            )
+            for p in sorted_by_volume
+        ]
+        
+        # Calculate totals
+        total_fees = sum(p.fees_15_days for p in pools_metrics)
+        
+        # Calculate weighted average APR (by TVL)
+        total_tvl = sum(p.tvl_current for p in pools_metrics)
+        weighted_apr = 0.0
+        if total_tvl > 0:
+            for p in pools_metrics:
+                if p.apr_current:
+                    weight = p.tvl_current / total_tvl
+                    weighted_apr += p.apr_current * weight
+        
+        return MultiPoolMetrics(
+            pools=pools_metrics,
+            top_3_by_volume=top_3_volume,
+            top_3_by_tvl=top_3_tvl,
+            total_fees=total_fees,
+            total_apr=weighted_apr
+        )
+    
+    def format_multi_pool_metrics_for_email(self, metrics: MultiPoolMetrics) -> Dict[str, Any]:
+        """
+        Format multi-pool metrics for email template.
+        
+        Args:
+            metrics: MultiPoolMetrics object
+            
+        Returns:
+            Dictionary with formatted data
+        """
+        return {
+            "pool_count": len(metrics.pools),
+            "top_3_volume": [
+                {
+                    "name": name,
+                    "value": f"${volume:,.2f}",
+                    "percentage": f"{percentage:.1f}%",
+                    "rank": idx + 1,
+                    "url": url
+                }
+                for idx, (name, volume, percentage, url) in enumerate(metrics.top_3_by_volume)
+            ],
+            "top_3_tvl": [
+                {
+                    "name": name,
+                    "value": f"${tvl_increase:,.2f}",
+                    "percentage": f"{percentage:+.1f}%",
+                    "rank": idx + 1,
+                    "url": url
+                }
+                for idx, (name, tvl_increase, percentage, url) in enumerate(metrics.top_3_by_tvl)
+            ],
+            "total_fees": f"${metrics.total_fees:,.2f}",
+            "total_apr": f"{metrics.total_apr * 100:.2f}%" if metrics.total_apr > 0 else "N/A",
             "timestamp": datetime.utcnow().strftime("%B %d, %Y at %H:%M UTC")
         }
