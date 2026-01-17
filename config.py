@@ -21,7 +21,8 @@ class Settings(BaseSettings):
     balancer_v2_subgraph: str = "https://api.studio.thegraph.com/query/24660/balancer-ethereum-v2/version/latest"
     # Optional: Unified Balancer GraphQL endpoint (if you have one)
     balancer_gql_endpoint: str | None = None
-    default_chain: str = "MAINNET"
+    default_chain: str = "MAINNET"  # For API queries (e.g., MAINNET, ARBITRUM, POLYGON)
+    blockchain_name: str = "ethereum"  # For balancer.fi URLs (e.g., ethereum, arbitrum, polygon)
     
     # Optional default pool
     default_pool_address: str | None = None

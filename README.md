@@ -5,8 +5,11 @@ A FastAPI-based web service that generates and emails performance reports for Ba
 ## Features
 
 - 📊 **Works with Both V2 and V3 Pools** - Automatically detects pool version
+- 🔀 **Multi-Pool Comparison** - Compare multiple pools with rankings and totals
 - 📈 Compares current metrics with 15-day historical data
 - 📧 Sends beautifully styled HTML email reports matching balancer.fi design
+- 🏆 Rankings: Top 3 pools by Volume and TVL
+- 💰 Aggregated metrics: Total fees and weighted average APR
 - 🚀 FastAPI with automatic API documentation
 - ⚡ Async/await for efficient API calls
 - 🔒 Type-safe with Pydantic models
@@ -70,8 +73,14 @@ FROM_EMAIL=your_email@gmail.com
 # Balancer APIs
 BALANCER_V3_API=https://api-v3.balancer.fi/graphql
 BALANCER_V2_SUBGRAPH=https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-v2
-DEFAULT_CHAIN=MAINNET
+DEFAULT_CHAIN=MAINNET          # For API queries (MAINNET, ARBITRUM, POLYGON, etc.)
+BLOCKCHAIN_NAME=ethereum       # For balancer.fi URLs (ethereum, arbitrum, polygon, etc.)
 ```
+
+**Multi-Chain Support:**
+- `DEFAULT_CHAIN`: Used for GraphQL API queries (e.g., `MAINNET`, `ARBITRUM`, `POLYGON`)
+- `BLOCKCHAIN_NAME`: Used for generating balancer.fi URLs (e.g., `ethereum`, `arbitrum`, `polygon`)
+- Both should represent the same network, just in different formats
 
 ### Gmail SMTP Setup
 
@@ -97,20 +106,45 @@ FastAPI provides automatic interactive documentation:
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 
-### Generate a Report
+### Generate a Single Pool Report
 
-Send a POST request to `/report`:
+Send a POST request to `/report` with one pool:
 
 ```bash
 curl -X POST "http://localhost:8000/report" \
   -H "Content-Type: application/json" \
   -d '{
-    "pool_address": "0x3de27efa2f1aa663ae5d458857e731c129069f29",
+    "pool_addresses": ["0x3de27efa2f1aa663ae5d458857e731c129069f29"],
     "recipient_email": "your.email@example.com"
   }'
 ```
 
+### Generate a Multi-Pool Comparison Report
+
+Send a POST request with multiple pools:
+
+```bash
+curl -X POST "http://localhost:8000/report" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pool_addresses": [
+      "0x3de27efa2f1aa663ae5d458857e731c129069f29",
+      "0x5c6ee304399dbdb9c8ef030ab642b10820db8f56",
+      "0x96646936b91d6b9d7d0c47c496afbf3d6ec7b6f8"
+    ],
+    "recipient_email": "your.email@example.com"
+  }'
+```
+
+**Multi-Pool Report Includes:**
+- 🏆 Top 3 pools by Trading Volume (with % of total portfolio volume)
+- 💎 Top 3 pools by TVL Growth (absolute increase + % change from 15 days ago)
+- 💰 Total Fees collected (all pools combined)
+- 🚀 Weighted Average APR (by TVL)
+
 Or use the interactive Swagger UI at `/docs` to test the endpoint.
+
+**Note:** For backwards compatibility, you can still use `pool_address` (singular) for single pool reports.
 
 ### Health Check
 
@@ -122,12 +156,23 @@ curl http://localhost:8000/health
 
 ### POST /report
 
-Generate and send a pool performance report via email.
+Generate and send a pool performance report via email (single or multiple pools).
 
-**Request Body:**
+**Request Body (Single Pool):**
 ```json
 {
-  "pool_address": "0x3de27efa2f1aa663ae5d458857e731c129069f29",
+  "pool_addresses": ["0x3de27efa2f1aa663ae5d458857e731c129069f29"],
+  "recipient_email": "user@example.com"
+}
+```
+
+**Request Body (Multiple Pools):**
+```json
+{
+  "pool_addresses": [
+    "0x3de27efa2f1aa663ae5d458857e731c129069f29",
+    "0x5c6ee304399dbdb9c8ef030ab642b10820db8f56"
+  ],
   "recipient_email": "user@example.com"
 }
 ```

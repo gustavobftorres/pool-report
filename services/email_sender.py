@@ -32,18 +32,20 @@ class EmailSender:
             autoescape=select_autoescape(['html', 'xml'])
         )
     
-    def render_report_email(self, metrics_data: Dict[str, Any]) -> str:
+    def render_report_email(self, metrics_data: Dict[str, Any], multi_pool: bool = False) -> str:
         """
         Render the email report HTML from template with metrics data.
         
         Args:
             metrics_data: Dictionary containing formatted metrics for the template
+            multi_pool: If True, use multi-pool template; otherwise use single pool template
             
         Returns:
             Rendered HTML string
         """
         try:
-            template = self.jinja_env.get_template("email_report.html")
+            template_name = "email_report_multi.html" if multi_pool else "email_report.html"
+            template = self.jinja_env.get_template(template_name)
             html_content = template.render(**metrics_data)
             return html_content
         except Exception as e:
@@ -100,21 +102,26 @@ class EmailSender:
         self,
         recipient_email: str,
         pool_name: str,
-        metrics_data: Dict[str, Any]
+        metrics_data: Dict[str, Any],
+        multi_pool: bool = False
     ) -> None:
         """
         Send a complete pool performance report email.
         
         Args:
             recipient_email: Email address of the recipient
-            pool_name: Name of the pool for the subject line
+            pool_name: Name of the pool (or description for multi-pool)
             metrics_data: Dictionary containing formatted metrics
+            multi_pool: If True, send multi-pool comparison report
         """
         # Render the email HTML
-        html_content = self.render_report_email(metrics_data)
+        html_content = self.render_report_email(metrics_data, multi_pool=multi_pool)
         
         # Create subject line
-        subject = f"Balancer Pool Report: {pool_name}"
+        if multi_pool:
+            subject = f"Balancer Pools Comparison Report ({metrics_data.get('pool_count', 0)} Pools)"
+        else:
+            subject = f"Balancer Pool Report: {pool_name}"
         
         # Send the email
         await self.send_report_email(recipient_email, subject, html_content)

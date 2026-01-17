@@ -21,7 +21,8 @@ class BalancerAPI:
         self.gql_endpoint = settings.balancer_gql_endpoint
         self.v3_api_url = settings.balancer_v3_api
         self.v2_subgraph_url = self.gql_endpoint or settings.balancer_v2_subgraph
-        self.chain = settings.default_chain
+        self.chain = settings.default_chain  # For API queries (e.g., MAINNET)
+        self.blockchain_name = settings.blockchain_name  # For balancer.fi URLs (e.g., ethereum)
         
         if self.gql_endpoint:
             print(f"🔗 Using Balancer GQL Endpoint: {self.gql_endpoint}")
@@ -130,6 +131,9 @@ class BalancerAPI:
             
             if pool:
                 print(f"✅ Found V3 pool: {pool.get('name')}")
+                # Add metadata for URL generation
+                pool['_api_version'] = 'v3'
+                pool['_blockchain'] = self.blockchain_name
                 return pool
         except Exception as e:
             print(f"⚠️  V3 API failed: {str(e)}")
@@ -192,6 +196,8 @@ class BalancerAPI:
             "name": v2_pool.get("name") or f"Pool {v2_pool.get('poolType', 'Unknown')}",
             "type": v2_pool.get("poolType", "Unknown"),
             "version": 2,
+            "_api_version": "v2",  # Add metadata for URL generation
+            "_blockchain": self.blockchain_name,  # Blockchain name for balancer.fi URLs
             "dynamicData": {
                 "totalLiquidity": v2_pool.get("totalLiquidity", "0"),
                 "volume24h": "0",  # Not available in single query
