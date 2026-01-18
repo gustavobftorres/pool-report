@@ -159,6 +159,21 @@ async def generate_report(request: ReportRequest):
             
             # Format metrics for email
             metrics_data = calculator.format_metrics_for_email(metrics, pool_data)
+
+            pool_id = pool_data.get("id", pool_address)  # The long ID
+            blockchain = pool_data.get("_blockchain", "ethereum")
+            version = pool_data.get("_api_version", "v2")
+            
+            # 2. Construct the clickable URL
+            pool_url_link = f"https://balancer.fi/pools/{blockchain}/{version}/{pool_id}"
+            
+            # 3. Create the Timestamp string
+            current_time = datetime.utcnow().strftime("%B %d, %Y at %H:%M UTC")
+            
+            # 4. Inject into the dictionary so HTML can use them
+            metrics_data["pool_id"] = pool_id
+            metrics_data["pool_url"] = pool_url_link
+            metrics_data["timestamp"] = current_time
             
             # Send email
             print(f"📧 Sending report to {request.recipient_email}...")
