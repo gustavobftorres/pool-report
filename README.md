@@ -2,23 +2,6 @@
 
 A FastAPI-based web service that generates and emails performance reports for Balancer v2/v3 liquidity pools. The service queries Balancer's GraphQL APIs to fetch pool metrics and compares current performance with data from 15 days ago.
 
-## Features
-
-- 📊 **Works with Both V2 and V3 Pools** - Automatically detects pool version
-- 🔀 **Multi-Pool Comparison** - Compare multiple pools with rankings and totals
-- 🎯 **Pool-Type Specific Metrics** - Weighted pools show token weights, Boosted pools show yield APR
-- 📈 Compares current metrics with 15-day historical data
-- 📧 Sends beautifully styled HTML email reports with responsive design, gradient headers, and dark theme matching balancer.fi design
-- 🏆 Rankings: Top 3 pools by Volume, TVL Growth, Swap Fee, and more
-- 💰 Aggregated metrics: Total fees and weighted average APR
-- ⚙️ **Configurable Rankings** - Choose which metrics to rank pools by
-- 🔗 **Clickable Pool Links** - Direct links to balancer.fi
-- 🚀 FastAPI with automatic API documentation and lifecycle management
-- ⚡ Async/await for efficient API calls
-- 🔒 Type-safe with Pydantic models
-- 🔄 Smart fallback: Tries V3 API first, then V2 Subgraph
-- 📨 **Telegram Integration** - Sends rich image cards with key pool metrics to a Telegram chat for single-pool reports
-
 ## Metrics Tracked
 
 ### Core Metrics (All Pools)
@@ -34,16 +17,6 @@ A FastAPI-based web service that generates and emails performance reports for Ba
 - **Boosted APR** (Boosted pools): Yield from underlying yield-bearing tokens
 - **Rebalance Count** (Gyro/LVR pools): Number of rebalances in 15 days (when available)
 - **Surge Fees** (Stable Surge pools): Dynamic fee adjustments (when available)
-
-### ⚠️ V3 Pool Limitations
-V3 pools currently have limited historical data availability through the API:
-- **Historical snapshots** are not yet available via the V3 API endpoint
-- **Volume/Fees** are estimated by extrapolating 24h data to 15 days (marked as "est.")
-- **TVL comparison** shows current value only ("N/A" for change percentage)
-- All other current metrics (APR, swap fee, pool type) work normally
-- A note will appear in the email report when data is estimated
-
-V2 pools have full historical comparison with accurate 15-day metrics.
 
 ## Requirements
 
