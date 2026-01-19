@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     # Optional default pool
     default_pool_address: str | None = None
     
+    # Admin UI Credentials
+    admin_username: str
+    admin_password: str
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
