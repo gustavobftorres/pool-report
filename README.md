@@ -1,16 +1,39 @@
 # Balancer Pool Performance Reporter
 
-A FastAPI-based web service that generates and emails performance reports for Balancer v2/v3 liquidity pools. The service queries Balancer's GraphQL APIs to fetch pool metrics and compares current performance with data from 15 days ago.
+A FastAPI-based web service that generates and emails performance reports for Balancer v2/v3 liquidity pools. The service queries Balancer's GraphQL APIs to fetch pool metrics, compares current performance with data from 15 days ago, and sends beautifully styled reports via email and Telegram with visual change indicators and adaptive precision formatting.
 
+<<<<<<< HEAD
+=======
+## Features
+
+- 📊 **Works with Both V2 and V3 Pools** - Automatically detects pool version
+- 🔀 **Multi-Pool Comparison** - Compare multiple pools with rankings and totals
+- 🎯 **Pool-Type Specific Metrics** - Weighted pools show token weights, Boosted pools show yield APR
+- 📈 **Performance Tracking** - Compares current metrics with 15-day historical data
+- 📉 **Change Indicators** - Volume and fees show % change with visual indicators (📈/📉)
+- 🎨 **Adaptive Precision** - Automatically adjusts decimal places for tiny percentage changes
+- 💡 **Smart APR Calculation** - 5-level fallback including fee-based calculation for pools without APR data
+- 📧 Sends beautifully styled HTML email reports with responsive design, gradient headers, and dark theme matching balancer.fi design
+- 🏆 Rankings: Top 3 pools by Volume, TVL Growth, Swap Fee, and more
+- 💰 Aggregated metrics: Total fees and weighted average APR
+- ⚙️ **Configurable Rankings** - Choose which metrics to rank pools by
+- 🔗 **Clickable Pool Links** - Direct links to balancer.fi
+- 🚀 FastAPI with automatic API documentation and lifecycle management
+- ⚡ Async/await for efficient API calls
+- 🔒 Type-safe with Pydantic models
+- 🔄 Smart fallback: Tries V3 API first, then V2 Subgraph
+- 📨 **Telegram Integration** - Sends rich image cards with key pool metrics to a Telegram chat for single-pool reports
+
+>>>>>>> b25de0e (update README)
 ## Metrics Tracked
 
 ### Core Metrics (All Pools)
 - **Pool Type**: Weighted, Stable, Boosted, etc.
-- **Swap Fee**: Trading fee percentage
+- **Swap Fee**: Trading fee percentage (up to 4 decimal precision for low-fee pools)
 - **TVL (Total Value Locked)**: Current vs 15 days ago with % change
-- **Volume**: Total swap volume over the last 15 days
-- **Fees**: Total fees collected over the last 15 days
-- **APR**: Current Annual Percentage Rate
+- **Volume**: Total swap volume over the last 15 days with % change from previous period
+- **Fees**: Total fees collected over the last 15 days with % change from previous period
+- **APR**: Current Annual Percentage Rate (calculated from fees if not available from API)
 
 ### Pool-Type Specific Metrics
 - **Token Weights** (Weighted pools): Allocation percentages for each token
@@ -18,6 +41,35 @@ A FastAPI-based web service that generates and emails performance reports for Ba
 - **Rebalance Count** (Gyro/LVR pools): Number of rebalances in 15 days (when available)
 - **Surge Fees** (Stable Surge pools): Dynamic fee adjustments (when available)
 
+<<<<<<< HEAD
+=======
+### Adaptive Precision
+Volume and fees change percentages automatically adjust decimal precision based on magnitude:
+- **< 0.01%**: 4 decimal places (e.g., `+0.0003%`) - for low-activity pools
+- **< 1.0%**: 3 decimal places (e.g., `+0.120%`) - for moderate changes
+- **≥ 1.0%**: 2 decimal places (e.g., `+7.90%`) - for significant changes
+
+### APR Calculation
+The system uses a comprehensive fallback approach for APR:
+1. Direct `totalApr` field from API (V3 pools)
+2. Sum of `aprItems` array (V2 and some V3 pools)
+3. Direct `apr` field in pool data
+4. APR from root pool object
+5. **Fee-based calculation**: `APR = (daily_fees × 365) / TVL` (fallback for pools without APR data)
+
+### ⚠️ V3 Pool Limitations
+V3 pools may have limited historical data availability:
+- **Historical snapshots** are queried from the V3 API but may not always be available
+- When V3 snapshots are unavailable:
+  - **Volume/Fees** are estimated by extrapolating 24h data to 15 days (marked as "est.")
+  - **TVL comparison** shows current value only ("N/A" for change percentage)
+  - A note will appear in the email report indicating estimated data
+- All other current metrics (APR, swap fee, pool type) work normally
+- The system automatically attempts V3 snapshots first, then falls back to estimates
+
+V2 pools have full historical comparison with accurate 15-day metrics from the V2 Subgraph.
+
+>>>>>>> b25de0e (update README)
 ## Requirements
 
 - Python 3.11 or higher
@@ -67,8 +119,9 @@ SMTP_PASSWORD=your_app_password
 FROM_EMAIL=your_email@gmail.com
 
 # Balancer APIs
-BALANCER_V3_API=https://api-v3.balancer.fi/graphql
-BALANCER_V2_SUBGRAPH=https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-v2
+BALANCER_V3_API=https://api-v3.balancer.fi/
+BALANCER_V2_SUBGRAPH=https://api.studio.thegraph.com/query/24617/balancer-v2
+BALANCER_GQL_ENDPOINT=https://gateway-arbitrum.network.thegraph.com/api/YOUR_API_KEY/subgraphs/id/YOUR_SUBGRAPH_ID
 DEFAULT_CHAIN=MAINNET          # For API queries (MAINNET, ARBITRUM, POLYGON, etc.)
 BLOCKCHAIN_NAME=ethereum       # For balancer.fi URLs (ethereum, arbitrum, polygon, etc.)
 
@@ -293,6 +346,21 @@ uvicorn main:app --reload --port 8000
 
 You can test email generation without sending by examining the logs or temporarily modifying the email sender to save HTML to a file.
 
+<<<<<<< HEAD
+=======
+## Future Enhancements
+
+- [x] Support for multiple pools in a single report ✅
+- [x] Telegram integration for notifications ✅
+- [ ] Add charts and visualizations
+- [ ] Store historical reports in a database
+- [ ] Scheduled reports (daily/weekly cron jobs)
+- [ ] Support for multiple email recipients
+- [ ] Webhook notifications
+- [ ] WebSocket support for real-time updates
+- [ ] Full V3 pool historical data (pending V3 API availability)
+
+>>>>>>> b25de0e (update README)
 ## License
 
 MIT
