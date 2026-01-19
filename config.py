@@ -8,14 +8,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
-    # SMTP Configuration
+    # SMTP Configuration (only needed for FastAPI backend)
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
-    smtp_username: str
-    smtp_password: str
-    from_email: str
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    from_email: str | None = None
     
-    # Balancer API Configuration
+    # Balancer API Configuration (only needed for FastAPI backend)
     balancer_v3_api: str = "https://api-v3.balancer.fi/"
     # V2 subgraph - using public endpoint
     balancer_v2_subgraph: str = "https://api.studio.thegraph.com/query/24660/balancer-ethereum-v2/version/latest"
@@ -24,12 +24,11 @@ class Settings(BaseSettings):
     default_chain: str = "MAINNET"  # For API queries (e.g., MAINNET, ARBITRUM, POLYGON)
     blockchain_name: str = "ethereum"  # For balancer.fi URLs (e.g., ethereum, arbitrum, polygon)
 
-    # Telegram Config
-    telegram_bot_token: str
+    # Telegram Config (only needed for FastAPI backend)
+    telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None  # Optional: fallback chat ID
     
-    # Database Configuration
-    # Railway and other platforms inject DATABASE_URL automatically
+    # Database Configuration (required for both FastAPI and Streamlit)
     database_url: str = "postgresql://localhost:5432/pool_report"
     
     # Optional default pool
