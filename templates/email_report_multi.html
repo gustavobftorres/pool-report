@@ -99,6 +99,53 @@
                         </td>
                     </tr>
                     
+                    <!-- Custom Rankings (Configurable) -->
+                    {% if custom_rankings %}
+                    {% for metric_key, ranking_data in custom_rankings.items() %}
+                    <tr>
+                        <td style="padding: 0 36px 24px; background-color: #31363F;">
+                            <h2 style="margin: 0 0 20px; color: #E5D1B9; font-size: 20px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">
+                                {% if metric_key == "swap_fee" %}📊 Top 3 by Swap Fee
+                                {% elif metric_key == "rebalance_count" %}🔄 Top 3 by Rebalance Activity
+                                {% elif metric_key == "boosted_apr" %}💹 Top 3 by Boosted APR
+                                {% else %}⭐ Top 3 by {{ metric_key|title }}
+                                {% endif %}
+                            </h2>
+                            
+                            {% for pool_name, value, pool_url in ranking_data %}
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 12px;">
+                                <tr>
+                                    <td style="padding: 16px 20px; background-color: #5B6068; border-radius: 8px; border-left: 4px solid {% if loop.index == 1 %}#E5D1B9{% elif loop.index == 2 %}#BAB3F3{% else %}#8B8EA7{% endif %};">
+                                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                            <tr>
+                                                <td style="vertical-align: middle; width: 60%;">
+                                                    <span style="color: #E5D1B9; font-size: 24px; font-weight: 800; margin-right: 12px;">{{ loop.index }}</span>
+                                                    {% if pool_url %}
+                                                    <a href="{{ pool_url }}" style="color: #E5D1B9; font-size: 16px; font-weight: 600; text-decoration: none;">{{ pool_name }} 🔗</a>
+                                                    {% else %}
+                                                    <span style="color: #E5D1B9; font-size: 16px; font-weight: 600;">{{ pool_name }}</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td style="vertical-align: middle; text-align: right; width: 40%;">
+                                                    <span style="color: #BAB3F3; font-size: 18px; font-weight: 700;">
+                                                        {% if metric_key == "swap_fee" %}{{ "%.4f"|format(value * 100) }}%
+                                                        {% elif metric_key == "rebalance_count" %}{{ value|int }}
+                                                        {% elif metric_key == "boosted_apr" %}{{ "%.2f"|format(value * 100) }}%
+                                                        {% else %}{{ value }}
+                                                        {% endif %}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% endif %}
+                    
                     <!-- Total Metrics Grid -->
                     <tr>
                         <td style="padding: 0 36px 32px; background-color: #31363F;">

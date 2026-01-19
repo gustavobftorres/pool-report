@@ -90,6 +90,88 @@
                         </td>
                     </tr>
                     
+                    <!-- Pool Properties Section -->
+                    <tr>
+                        <td style="padding: 0 36px 24px; background-color: #31363F;">
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                <tr>
+                                    <td width="48%" style="padding: 16px; background-color: #5B6068; border-radius: 8px;">
+                                        <p style="margin: 0 0 6px; color: #BAB3F3; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">POOL TYPE</p>
+                                        <p style="margin: 0; color: #E5D1B9; font-size: 16px; font-weight: 700;">{{ pool_type }}</p>
+                                    </td>
+                                    <td width="4%"></td>
+                                    <td width="48%" style="padding: 16px; background-color: #5B6068; border-radius: 8px;">
+                                        <p style="margin: 0 0 6px; color: #BAB3F3; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">SWAP FEE</p>
+                                        <p style="margin: 0; color: #E5D1B9; font-size: 16px; font-weight: 700;">{{ swap_fee }}</p>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- Conditional: Weighted Pool Weights -->
+                            {% if token_weights %}
+                            <div style="margin-top: 16px; padding: 16px; background-color: #5B6068; border-radius: 8px; border: 1px solid #BAB3F3;">
+                                <p style="margin: 0 0 12px; color: #BAB3F3; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">TOKEN WEIGHTS</p>
+                                {% for symbol, weight in token_weights.items() %}
+                                <p style="margin: 0 0 8px; color: #E5D1B9; font-size: 14px;">
+                                    <span style="font-weight: 600;">{{ symbol }}:</span> {{ weight }}%
+                                </p>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                            
+                            <!-- Conditional: Boosted APR -->
+                            {% if boosted_apr is not none %}
+                            <div style="margin-top: 16px; padding: 16px; background-color: #5B6068; border-radius: 8px; border: 1px solid #4ade80;">
+                                <p style="margin: 0 0 12px; color: #BAB3F3; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">BOOSTED APR (Yield-Bearing Tokens)</p>
+                                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                    <tr>
+                                        <td style="width: 50%;">
+                                            <p style="margin: 0; color: #4ade80; font-size: 14px; font-weight: 600;">Current</p>
+                                            <p style="margin: 4px 0 0; color: #E5D1B9; font-size: 20px; font-weight: 700;">{{ boosted_apr }}</p>
+                                        </td>
+                                        {% if boosted_apr_15d_ago is not none %}
+                                        <td style="width: 50%; text-align: right;">
+                                            <p style="margin: 0; color: #8B8EA7; font-size: 14px; font-weight: 600;">15d ago</p>
+                                            <p style="margin: 4px 0 0; color: #BAB3F3; font-size: 18px; font-weight: 600;">{{ boosted_apr_15d_ago }}</p>
+                                        </td>
+                                        {% endif %}
+                                    </tr>
+                                </table>
+                            </div>
+                            {% endif %}
+                            
+                            <!-- Conditional: Surge Fees -->
+                            {% if surge_fees is not none %}
+                            <div style="margin-top: 16px; padding: 16px; background-color: #5B6068; border-radius: 8px; border: 1px solid #E5D1B9;">
+                                <p style="margin: 0 0 12px; color: #BAB3F3; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">SURGE HOOK FEES</p>
+                                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                                    <tr>
+                                        <td style="width: 50%;">
+                                            <p style="margin: 0; color: #E5D1B9; font-size: 14px; font-weight: 600;">Current</p>
+                                            <p style="margin: 4px 0 0; color: #E5D1B9; font-size: 20px; font-weight: 700;">{{ surge_fees }}</p>
+                                        </td>
+                                        {% if surge_fees_15d_ago is not none %}
+                                        <td style="width: 50%; text-align: right;">
+                                            <p style="margin: 0; color: #8B8EA7; font-size: 14px; font-weight: 600;">15d ago</p>
+                                            <p style="margin: 4px 0 0; color: #BAB3F3; font-size: 18px; font-weight: 600;">{{ surge_fees_15d_ago }}</p>
+                                        </td>
+                                        {% endif %}
+                                    </tr>
+                                </table>
+                            </div>
+                            {% endif %}
+                            
+                            <!-- Conditional: Rebalance Count -->
+                            {% if rebalance_count_15d is not none %}
+                            <div style="margin-top: 16px; padding: 16px; background-color: #5B6068; border-radius: 8px; border: 1px solid #BAB3F3;">
+                                <p style="margin: 0 0 6px; color: #BAB3F3; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">REBALANCES (15 Days)</p>
+                                <p style="margin: 0; color: #E5D1B9; font-size: 24px; font-weight: 800;">{{ rebalance_count_15d }}</p>
+                                <p style="margin: 4px 0 0; color: #8B8EA7; font-size: 12px;">Total rebalance events</p>
+                            </div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    
                     <tr>
                         <td class="mobile-padding" style="padding: 32px 36px; background-color: #31363F;">
                             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #5B6068; border-radius: 12px; border: 1px solid #BAB3F3;">
@@ -141,9 +223,14 @@
                                         <p style="margin: 0 0 12px; color: #BAB3F3; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">
                                             💹 Volume (15d)
                                         </p>
-                                        <h4 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">
+                                        <h4 style="margin: 0 0 12px; color: #ffffff; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">
                                             {{ volume_15d }}
                                         </h4>
+                                        <p style="margin: 0; padding: 8px 12px; background-color: {% if volume_change_positive %}rgba(74, 222, 128, 0.1){% else %}rgba(248, 113, 113, 0.1){% endif %}; border-radius: 6px; border: 1px solid {% if volume_change_positive %}#4ade80{% else %}#f87171{% endif %};">
+                                            <span style="font-size: 13px; font-weight: 700; color: {% if volume_change_positive %}#4ade80{% else %}#f87171{% endif %};">
+                                                {% if volume_change_positive %}📈{% else %}📉{% endif %} {{ volume_change_percent }}
+                                            </span>
+                                        </p>
                                     </td>
                                     
                                     <td class="spacer" width="6%" style="font-size: 0; line-height: 0;">&nbsp;</td>
@@ -152,9 +239,14 @@
                                         <p style="margin: 0 0 12px; color: #BAB3F3; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">
                                             💰 Fees (15d)
                                         </p>
-                                        <h4 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">
+                                        <h4 style="margin: 0 0 12px; color: #ffffff; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">
                                             {{ fees_15d }}
                                         </h4>
+                                        <p style="margin: 0; padding: 8px 12px; background-color: {% if fees_change_positive %}rgba(74, 222, 128, 0.1){% else %}rgba(248, 113, 113, 0.1){% endif %}; border-radius: 6px; border: 1px solid {% if fees_change_positive %}#4ade80{% else %}#f87171{% endif %};">
+                                            <span style="font-size: 13px; font-weight: 700; color: {% if fees_change_positive %}#4ade80{% else %}#f87171{% endif %};">
+                                                {% if fees_change_positive %}📈{% else %}📉{% endif %} {{ fees_change_percent }}
+                                            </span>
+                                        </p>
                                     </td>
                                 </tr>
                             </table>
@@ -199,6 +291,11 @@
                                         <p style="margin: 0;">
                                             ⚡ Data sourced from Balancer V2/V3 GraphQL APIs
                                         </p>
+                                        {% if is_v3_estimated %}
+                                        <p style="margin: 8px 0 0; padding: 8px; background-color: rgba(186, 179, 243, 0.1); border-radius: 4px; border-left: 3px solid #BAB3F3; font-size: 12px;">
+                                            ℹ️ <strong>V3 Pool Note:</strong> Historical snapshots not yet available. Volume/fees are estimated from 24h data × 15 days.
+                                        </p>
+                                        {% endif %}
                                     </td>
                                 </tr>
                             </table>

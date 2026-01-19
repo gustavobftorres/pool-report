@@ -6,10 +6,13 @@ A FastAPI-based web service that generates and emails performance reports for Ba
 
 - 📊 **Works with Both V2 and V3 Pools** - Automatically detects pool version
 - 🔀 **Multi-Pool Comparison** - Compare multiple pools with rankings and totals
+- 🎯 **Pool-Type Specific Metrics** - Weighted pools show token weights, Boosted pools show yield APR
 - 📈 Compares current metrics with 15-day historical data
 - 📧 Sends beautifully styled HTML email reports with responsive design, gradient headers, and dark theme matching balancer.fi design
-- 🏆 Rankings: Top 3 pools by Volume and TVL
+- 🏆 Rankings: Top 3 pools by Volume, TVL Growth, Swap Fee, and more
 - 💰 Aggregated metrics: Total fees and weighted average APR
+- ⚙️ **Configurable Rankings** - Choose which metrics to rank pools by
+- 🔗 **Clickable Pool Links** - Direct links to balancer.fi
 - 🚀 FastAPI with automatic API documentation and lifecycle management
 - ⚡ Async/await for efficient API calls
 - 🔒 Type-safe with Pydantic models
@@ -17,10 +20,29 @@ A FastAPI-based web service that generates and emails performance reports for Ba
 
 ## Metrics Tracked
 
+### Core Metrics (All Pools)
+- **Pool Type**: Weighted, Stable, Boosted, etc.
+- **Swap Fee**: Trading fee percentage
 - **TVL (Total Value Locked)**: Current vs 15 days ago with % change
 - **Volume**: Total swap volume over the last 15 days
 - **Fees**: Total fees collected over the last 15 days
 - **APR**: Current Annual Percentage Rate
+
+### Pool-Type Specific Metrics
+- **Token Weights** (Weighted pools): Allocation percentages for each token
+- **Boosted APR** (Boosted pools): Yield from underlying yield-bearing tokens
+- **Rebalance Count** (Gyro/LVR pools): Number of rebalances in 15 days (when available)
+- **Surge Fees** (Stable Surge pools): Dynamic fee adjustments (when available)
+
+### ⚠️ V3 Pool Limitations
+V3 pools currently have limited historical data availability through the API:
+- **Historical snapshots** are not yet available via the V3 API endpoint
+- **Volume/Fees** are estimated by extrapolating 24h data to 15 days (marked as "est.")
+- **TVL comparison** shows current value only ("N/A" for change percentage)
+- All other current metrics (APR, swap fee, pool type) work normally
+- A note will appear in the email report when data is estimated
+
+V2 pools have full historical comparison with accurate 15-day metrics.
 
 ## Requirements
 
@@ -141,6 +163,30 @@ curl -X POST "http://localhost:8000/report" \
 - 💎 Top 3 pools by TVL Growth (absolute increase + % change from 15 days ago)
 - 💰 Total Fees collected (all pools combined)
 - 🚀 Weighted Average APR (by TVL)
+
+### Multi-Pool with Custom Rankings
+
+Add custom rankings to your multi-pool reports:
+
+```bash
+curl -X POST "http://localhost:8000/report" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pool_addresses": [
+      "0x3de27efa2f1aa663ae5d458857e731c129069f29",
+      "0x5c6ee304399dbdb9c8ef030ab642b10820db8f56"
+    ],
+    "recipient_email": "your.email@example.com",
+    "ranking_by": ["swap_fee", "boosted_apr"]
+  }'
+```
+
+**Available Ranking Metrics:**
+- `volume` - Top pools by trading volume (default)
+- `tvl_growth` - Top pools by TVL increase (default)
+- `swap_fee` - Top pools by swap fee percentage
+- `boosted_apr` - Top pools by boosted APR (Boosted pools only)
+- `rebalance_count` - Top pools by rebalance activity (when available)
 
 Or use the interactive Swagger UI at `/docs` to test the endpoint.
 
