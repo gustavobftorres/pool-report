@@ -26,6 +26,8 @@ services:
         value: https://api-v3.balancer.fi/
       - key: BALANCER_V2_SUBGRAPH
         value: https://api.studio.thegraph.com/query/24660/balancer-ethereum-v2/version/latest
+      - key: BALANCER_GQL_ENDPOINT
+        sync: false  # You'll enter your Gateway URL with API key
       - key: DEFAULT_CHAIN
         value: MAINNET
       - key: BLOCKCHAIN_NAME
