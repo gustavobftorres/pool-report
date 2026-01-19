@@ -26,7 +26,7 @@ class Settings(BaseSettings):
 
     # Telegram Config
     telegram_bot_token: str
-    telegram_chat_id: str
+    telegram_chat_id: str | None = None  # Optional: fallback chat ID
     
     # Database Configuration
     # Railway and other platforms inject DATABASE_URL automatically
