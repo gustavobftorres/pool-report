@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     balancer_gql_endpoint: str | None = None
     default_chain: str = "MAINNET"  # For API queries (e.g., MAINNET, ARBITRUM, POLYGON)
     blockchain_name: str = "ethereum"  # For balancer.fi URLs (e.g., ethereum, arbitrum, polygon)
+
+    #Telegram Config
+    telegram_bot_token: str
+    telegram_chat_id: str
     
     # Optional default pool
     default_pool_address: str | None = None

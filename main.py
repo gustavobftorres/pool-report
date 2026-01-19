@@ -11,6 +11,7 @@ from models import ReportRequest, ReportResponse, HealthResponse
 from services.metrics_calculator import MetricsCalculator
 from services.email_sender import EmailSender
 from services.balancer_api import BalancerAPIError
+from services.telegram_sender import TelegramSender
 from config import settings
 
 
@@ -83,8 +84,9 @@ async def health_check():
 )
 async def generate_report(request: ReportRequest):
     """
-    Generate and send a pool performance report via email.
-    Supports both single pool and multi-pool comparison reports.
+    Generate and send a pool performance report via Email.
+    - Single pool: Email report (and Telegram card as an extra channel)
+    - Multi-pool: Email summary report
     
     Args:
         request: ReportRequest containing pool_addresses (list) and recipient_email
@@ -93,18 +95,21 @@ async def generate_report(request: ReportRequest):
         ReportResponse with status, timestamp, and pool information
         
     Raises:
-        HTTPException: If report generation or email sending fails
+        HTTPException: If report generation or sending fails
     """
     try:
         # Initialize services
         calculator = MetricsCalculator()
         email_sender = EmailSender()
+        telegram_sender = TelegramSender()  # Used as an additional channel for single-pool
         
         # Determine if single or multiple pools
         is_multi_pool = len(request.pool_addresses) > 1
         
         if is_multi_pool:
-            # Multi-pool comparison report
+            # ---------------------------------------------------------
+            # MULTI-POOL: Email summary report
+            # ---------------------------------------------------------
             print(f"📊 Generating comparison report for {len(request.pool_addresses)} pools...")
             
             # Calculate metrics for all pools
@@ -133,8 +138,12 @@ async def generate_report(request: ReportRequest):
             )
             
             print(f"✅ Comparison report sent successfully!")
+
+            # Also send Telegram card (secondary channel)
+            print("✈️ Sending Telegram multi-pool Card to Chat ID...")
+            await telegram_sender.send_multi_pool_report(metrics_data=metrics_data)
+            print("✅ Telegram multi-pool report sent successfully!")
             
-            # Return response
             return ReportResponse(
                 status="sent",
                 timestamp=datetime.utcnow(),
@@ -143,7 +152,9 @@ async def generate_report(request: ReportRequest):
             )
         
         else:
-            # Single pool report
+            # ---------------------------------------------------------
+            # SINGLE POOL: Email report + Telegram card
+            # ---------------------------------------------------------
             pool_address = request.pool_addresses[0]
 
             metrics = await calculator.calculate_pool_metrics(pool_address)
@@ -151,20 +162,19 @@ async def generate_report(request: ReportRequest):
             # Get pool data for token info
             pool_data = await calculator.api.get_current_pool_data(pool_address)
             
-            # Format metrics for email
+            # Format metrics dictionary
             metrics_data = calculator.format_metrics_for_email(metrics, pool_data)
 
-            pool_id = pool_data.get("id", pool_address)  # The long ID
+            # Extract Metadata
+            pool_id = pool_data.get("id", pool_address)
             blockchain = pool_data.get("_blockchain", "ethereum")
             version = pool_data.get("_api_version", "v2")
             
-            # 2. Construct the clickable URL
+            # Construct URL and Timestamp
             pool_url_link = f"https://balancer.fi/pools/{blockchain}/{version}/{pool_id}"
-            
-            # 3. Create the Timestamp string
             current_time = datetime.utcnow().strftime("%B %d, %Y at %H:%M UTC")
             
-            # 4. Inject into the dictionary so HTML can use them
+            # Inject data for the Telegram Card & Markdown
             metrics_data["pool_id"] = pool_id
             metrics_data["pool_url"] = pool_url_link
             metrics_data["timestamp"] = current_time
@@ -176,8 +186,16 @@ async def generate_report(request: ReportRequest):
                 metrics_data=metrics_data,
                 multi_pool=False
             )
-                        
-            # Return response
+            print(f"✅ Email report sent successfully!")
+
+            # Optionally, also send Telegram card (secondary channel)
+            print(f"✈️ Sending Telegram Card to Chat ID...")
+            await telegram_sender.send_pool_report(
+                pool_data=pool_data,
+                metrics_data=metrics_data
+            )
+            print(f"✅ Telegram report sent successfully!")
+            
             return ReportResponse(
                 status="sent",
                 timestamp=datetime.utcnow(),
