@@ -115,6 +115,9 @@ with tab3:
     st.header("Send Pool Reports")
     st.write("Send performance reports to users via email and Telegram")
     
+    # Info about API status
+    st.info(f"📡 API URL: `{API_URL}` • ⏱️ First request after inactivity may take 1-2 minutes (cold start)")
+    
     users = db.query(User).all()
     
     if users:
@@ -181,27 +184,32 @@ with tab3:
                         if not email_input:
                             st.error("Please enter an email address")
                         else:
-                            with st.spinner(f"Sending report to {user.first_name}..."):
+                            with st.spinner(f"🔄 Generating report for {user.first_name}... (This may take up to 2 minutes if the service is waking up)"):
                                 try:
                                     # Make API request to generate report
+                                    # Extended timeout to handle cold starts (when service is asleep)
                                     response = httpx.post(
                                         f"{API_URL}/report",
                                         json={
                                             "user_id": user.user_id,
                                             "recipient_email": email_input
                                         },
-                                        timeout=60.0
+                                        timeout=120.0  # 2 minutes to handle cold starts
                                     )
                                     
                                     if response.status_code == 200:
-                                        st.success(f"✅ Report sent to {user.first_name}!")
+                                        result = response.json()
+                                        st.success(f"✅ Report sent successfully to {user.first_name}!")
+                                        st.info(f"📧 Email sent to: {email_input}")
+                                        if result.get("telegram_sent"):
+                                            st.info(f"📱 Telegram message sent to user {user.user_id}")
                                     else:
                                         error_detail = response.json().get("detail", "Unknown error")
                                         st.error(f"❌ Failed to send report: {error_detail}")
                                 except httpx.TimeoutException:
-                                    st.error("⏱️ Request timed out. The report may still be processing.")
+                                    st.warning("⏱️ Request timed out. The server may be waking up from sleep. Please try again in 30 seconds.")
                                 except httpx.ConnectError:
-                                    st.error("❌ Cannot connect to API. Make sure FastAPI is running on http://localhost:8000")
+                                    st.error(f"❌ Cannot connect to API at {API_URL}. Please check the API_URL environment variable.")
                                 except Exception as e:
                                     st.error(f"❌ Error: {str(e)}")
                     
