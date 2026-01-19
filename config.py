@@ -24,9 +24,13 @@ class Settings(BaseSettings):
     default_chain: str = "MAINNET"  # For API queries (e.g., MAINNET, ARBITRUM, POLYGON)
     blockchain_name: str = "ethereum"  # For balancer.fi URLs (e.g., ethereum, arbitrum, polygon)
 
-    #Telegram Config
+    # Telegram Config
     telegram_bot_token: str
     telegram_chat_id: str
+    
+    # Database Configuration
+    # Railway and other platforms inject DATABASE_URL automatically
+    database_url: str = "postgresql://localhost:5432/pool_report"
     
     # Optional default pool
     default_pool_address: str | None = None

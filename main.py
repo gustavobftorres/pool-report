@@ -2,10 +2,12 @@
 FastAPI application for Balancer Pool Performance Reporter.
 Generates and emails performance reports for Balancer pools.
 """
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Request, Depends
 from fastapi.responses import JSONResponse
 from datetime import datetime
 from contextlib import asynccontextmanager
+import httpx
+from sqlalchemy.orm import Session
 
 from models import ReportRequest, ReportResponse, HealthResponse
 from services.metrics_calculator import MetricsCalculator
@@ -13,6 +15,7 @@ from services.email_sender import EmailSender
 from services.balancer_api import BalancerAPIError
 from services.telegram_sender import TelegramSender
 from config import settings
+from database import get_db, User, UserPool
 
 
 # Lifespan context manager for startup/shutdown events
@@ -47,6 +50,8 @@ async def root():
         "endpoints": {
             "health": "/health",
             "report": "/report (POST)",
+            "telegram_webhook": "/telegram/webhook (POST)",
+            "telegram_setup": "/telegram/setup-webhook (POST)",
             "docs": "/docs",
             "redoc": "/redoc"
         }
@@ -65,6 +70,119 @@ async def health_check():
     )
 
 
+@app.post("/telegram/webhook", tags=["Telegram"])
+async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
+    """
+    Webhook endpoint for Telegram bot updates.
+    Handles commands like /start and /myid to help users discover their chat ID.
+    Also saves user information to the database for admin management.
+    """
+    try:
+        data = await request.json()
+        
+        # Extract message and chat info
+        if "message" in data:
+            message = data["message"]
+            chat_id = message["chat"]["id"]
+            text = message.get("text", "")
+            
+            # Extract user info
+            from_user = message.get("from", {})
+            user_id = from_user.get("id")
+            username = from_user.get("username")
+            first_name = from_user.get("first_name", "")
+            last_name = from_user.get("last_name")
+            
+            # Save or update user in database
+            user = db.query(User).filter(User.user_id == user_id).first()
+            if user:
+                # Update existing user
+                user.last_seen = datetime.utcnow()
+                user.username = username
+                user.first_name = first_name
+                user.last_name = last_name
+            else:
+                # Create new user
+                user = User(
+                    user_id=user_id,
+                    username=username,
+                    first_name=first_name,
+                    last_name=last_name
+                )
+                db.add(user)
+            db.commit()
+            print(f"✅ User {user_id} ({first_name}) saved/updated in database")
+            
+            # Handle /start command
+            if text == "/start":
+                telegram_sender = TelegramSender()
+                response_text = (
+                    f"👋 Welcome {first_name}!\n\n"
+                    f"✅ *Your Telegram User ID:* `{user_id}`\n\n"
+                    f"Your account is registered. An admin will assign pools to you.\n"
+                    f"Once pools are assigned, you can request reports!\n\n"
+                    f"*Example request:*\n"
+                    f"```json\n"
+                    f'{{\n'
+                    f'  "user_id": {user_id},\n'
+                    f'  "recipient_email": "you@example.com"\n'
+                    f'}}\n'
+                    f"```"
+                )
+                
+                # Send response via Telegram API
+                await telegram_sender.send_message(str(chat_id), response_text)
+                print(f"✅ Sent welcome message to user {user_id}")
+            
+            # Handle /myid command
+            elif text == "/myid":
+                telegram_sender = TelegramSender()
+                pool_count = len(user.pools) if user else 0
+                response_text = (
+                    f"✅ *Your Telegram User ID:* `{user_id}`\n\n"
+                    f"📊 *Assigned Pools:* {pool_count}\n\n"
+                    f"Use this ID in your API requests to receive pool reports."
+                )
+                
+                await telegram_sender.send_message(str(chat_id), response_text)
+                print(f"✅ Sent user ID to {user_id}")
+        
+        return {"ok": True}
+    
+    except Exception as e:
+        print(f"❌ Error in telegram webhook: {str(e)}")
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/telegram/setup-webhook", tags=["Telegram"])
+async def setup_telegram_webhook(webhook_url: str):
+    """
+    Configure Telegram bot webhook URL.
+    Call this once to register your webhook endpoint with Telegram.
+    
+    Example: POST /telegram/setup-webhook?webhook_url=https://your-domain.com/telegram/webhook
+    """
+    try:
+        telegram_api = f"https://api.telegram.org/bot{settings.telegram_bot_token}/setWebhook"
+        async with httpx.AsyncClient() as client:
+            response = await client.post(telegram_api, json={"url": webhook_url})
+            result = response.json()
+            
+            if result.get("ok"):
+                print(f"✅ Webhook configured: {webhook_url}")
+                return {"status": "success", "webhook_url": webhook_url, "response": result}
+            else:
+                print(f"❌ Failed to configure webhook: {result}")
+                return {"status": "failed", "response": result}
+    
+    except Exception as e:
+        print(f"❌ Error setting up webhook: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error setting up webhook: {str(e)}"
+        )
+
+
 @app.post(
     "/report",
     response_model=ReportResponse,
@@ -80,16 +198,21 @@ async def health_check():
     - Current APR
     
     The report is sent as a beautifully styled HTML email matching balancer.fi design.
+    
+    Supports two modes:
+    1. Direct pool addresses: Provide pool_addresses array
+    2. User lookup: Provide user_id to automatically use assigned pools
     """
 )
-async def generate_report(request: ReportRequest):
+async def generate_report(request: ReportRequest, db: Session = Depends(get_db)):
     """
     Generate and send a pool performance report via Email.
     - Single pool: Email report (and Telegram card as an extra channel)
     - Multi-pool: Email summary report
     
     Args:
-        request: ReportRequest containing pool_addresses (list) and recipient_email
+        request: ReportRequest containing either pool_addresses or user_id
+        db: Database session (injected)
         
     Returns:
         ReportResponse with status, timestamp, and pool information
@@ -98,26 +221,51 @@ async def generate_report(request: ReportRequest):
         HTTPException: If report generation or sending fails
     """
     try:
+        # Determine pool addresses (either from request or user lookup)
+        if request.user_id:
+            # Look up user's pools from database
+            print(f"🔍 Looking up pools for user {request.user_id}...")
+            user_pools = db.query(UserPool).filter(
+                UserPool.user_id == request.user_id
+            ).all()
+            
+            if not user_pools:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No pools assigned to user {request.user_id}. Please contact admin to assign pools."
+                )
+            
+            pool_addresses = [up.pool_address for up in user_pools]
+            print(f"✅ Found {len(pool_addresses)} pool(s) for user {request.user_id}")
+            
+            # Use user's Telegram ID as chat_id if not provided
+            if not request.telegram_chat_id:
+                request.telegram_chat_id = str(request.user_id)
+        else:
+            # Use provided pool_addresses (backward compatibility)
+            pool_addresses = request.pool_addresses
+            print(f"📊 Using {len(pool_addresses)} pool(s) from request")
+        
         # Initialize services
         calculator = MetricsCalculator()
         email_sender = EmailSender()
         telegram_sender = TelegramSender()  # Used as an additional channel for single-pool
         
         # Determine if single or multiple pools
-        is_multi_pool = len(request.pool_addresses) > 1
+        is_multi_pool = len(pool_addresses) > 1
         
         if is_multi_pool:
             # ---------------------------------------------------------
             # MULTI-POOL: Email summary report
             # ---------------------------------------------------------
-            print(f"📊 Generating comparison report for {len(request.pool_addresses)} pools...")
+            print(f"📊 Generating comparison report for {len(pool_addresses)} pools...")
             
             # Calculate metrics for all pools
             print("🔍 Fetching data for all pools...")
             # Convert RankingMetric enums to strings for the calculator
             ranking_by = [metric.value for metric in request.ranking_by] if request.ranking_by else []
             multi_metrics = await calculator.calculate_multi_pool_metrics(
-                request.pool_addresses,
+                pool_addresses,
                 ranking_by=ranking_by
             )
             
@@ -140,22 +288,28 @@ async def generate_report(request: ReportRequest):
             print(f"✅ Comparison report sent successfully!")
 
             # Also send Telegram card (secondary channel)
-            print("✈️ Sending Telegram multi-pool Card to Chat ID...")
-            await telegram_sender.send_multi_pool_report(metrics_data=metrics_data)
-            print("✅ Telegram multi-pool report sent successfully!")
+            # Use request-level telegram_chat_id if provided, otherwise use env variable
+            telegram_chat_id = request.telegram_chat_id or settings.telegram_chat_id
+            if telegram_chat_id:
+                print(f"✈️ Sending Telegram multi-pool Card to Chat ID: {telegram_chat_id}...")
+                await telegram_sender.send_multi_pool_report(
+                    metrics_data=metrics_data,
+                    chat_id=telegram_chat_id
+                )
+                print("✅ Telegram multi-pool report sent successfully!")
             
             return ReportResponse(
                 status="sent",
                 timestamp=datetime.utcnow(),
                 pool_name=f"Comparison of {len(multi_metrics.pools)} Pools",
-                pool_address=", ".join(request.pool_addresses[:3]) + ("..." if len(request.pool_addresses) > 3 else "")
+                pool_address=", ".join(pool_addresses[:3]) + ("..." if len(pool_addresses) > 3 else "")
             )
         
         else:
             # ---------------------------------------------------------
             # SINGLE POOL: Email report + Telegram card
             # ---------------------------------------------------------
-            pool_address = request.pool_addresses[0]
+            pool_address = pool_addresses[0]
 
             metrics = await calculator.calculate_pool_metrics(pool_address)
             
@@ -189,12 +343,16 @@ async def generate_report(request: ReportRequest):
             print(f"✅ Email report sent successfully!")
 
             # Optionally, also send Telegram card (secondary channel)
-            print(f"✈️ Sending Telegram Card to Chat ID...")
-            await telegram_sender.send_pool_report(
-                pool_data=pool_data,
-                metrics_data=metrics_data
-            )
-            print(f"✅ Telegram report sent successfully!")
+            # Use request-level telegram_chat_id if provided, otherwise use env variable
+            telegram_chat_id = request.telegram_chat_id or settings.telegram_chat_id
+            if telegram_chat_id:
+                print(f"✈️ Sending Telegram Card to Chat ID: {telegram_chat_id}...")
+                await telegram_sender.send_pool_report(
+                    pool_data=pool_data,
+                    metrics_data=metrics_data,
+                    chat_id=telegram_chat_id
+                )
+                print(f"✅ Telegram report sent successfully!")
             
             return ReportResponse(
                 status="sent",

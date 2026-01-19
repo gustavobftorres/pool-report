@@ -8,7 +8,8 @@ class TelegramSender:
     def __init__(self):
         self.bot_token = settings.telegram_bot_token
         self.chat_id = settings.telegram_chat_id
-        self.api_url = f"https://api.telegram.org/bot{self.bot_token}/sendPhoto"
+        self.base_url = f"https://api.telegram.org/bot{self.bot_token}"
+        self.api_url = f"{self.base_url}/sendPhoto"
         
         # Configure the screenshot tool (size matches the HTML/CSS)
         self.hti = Html2Image(output_path="temp_images", size=(800, 1400))
@@ -19,11 +20,39 @@ class TelegramSender:
         # Ensure temp directory exists
         os.makedirs("temp_images", exist_ok=True)
 
-    async def send_pool_report(self, pool_data: dict, metrics_data: dict):
+    async def send_message(self, chat_id: str, text: str):
+        """
+        Send a simple text message to a Telegram chat.
+        Used for responding to bot commands like /start and /myid.
+        """
+        url = f"{self.base_url}/sendMessage"
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json={
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": "Markdown"
+            })
+            
+            if response.status_code == 200:
+                print(f"✅ Telegram message sent to chat {chat_id}")
+            else:
+                print(f"❌ Failed to send Telegram message: {response.text}")
+            
+            return response
+
+    async def send_pool_report(self, pool_data: dict, metrics_data: dict, chat_id: str | None = None):
         """
         Generates an image card and sends it to Telegram with Markdown text.
+        
+        Args:
+            pool_data: Pool information dictionary
+            metrics_data: Formatted metrics dictionary
+            chat_id: Optional chat ID to send to (defaults to env variable)
         """
         try:
+            # Use provided chat_id or fall back to default
+            target_chat_id = chat_id or self.chat_id
+            
             print("🎨 Generating Telegram report card...")
             
             # 1. Render HTML for the Image
@@ -50,12 +79,12 @@ class TelegramSender:
             )
 
             # 4. Send to Telegram
-            print(f"✈️ Sending to Telegram Chat ID: {self.chat_id}...")
+            print(f"✈️ Sending to Telegram Chat ID: {target_chat_id}...")
             async with httpx.AsyncClient() as client:
                 with open(image_path, "rb") as img_file:
                     response = await client.post(
                         self.api_url,
-                        data={"chat_id": self.chat_id, "caption": caption, "parse_mode": "Markdown"},
+                        data={"chat_id": target_chat_id, "caption": caption, "parse_mode": "Markdown"},
                         files={"photo": img_file}
                     )
                     
@@ -71,12 +100,19 @@ class TelegramSender:
         except Exception as e:
             print(f"❌ Error in TelegramSender: {str(e)}")
 
-    async def send_multi_pool_report(self, metrics_data: dict):
+    async def send_multi_pool_report(self, metrics_data: dict, chat_id: str | None = None):
         """
         Generates a multi-pool comparison image card and sends it to Telegram with Markdown text.
         Expects metrics_data to match MetricsCalculator.format_multi_pool_metrics_for_email output.
+        
+        Args:
+            metrics_data: Formatted multi-pool metrics dictionary
+            chat_id: Optional chat ID to send to (defaults to env variable)
         """
         try:
+            # Use provided chat_id or fall back to default
+            target_chat_id = chat_id or self.chat_id
+            
             print("🎨 Generating Telegram multi-pool report card...")
 
             # 1. Render HTML for the Image
@@ -114,12 +150,12 @@ class TelegramSender:
             caption = "\n".join(caption_lines)
 
             # 4. Send to Telegram
-            print(f"✈️ Sending multi-pool card to Telegram Chat ID: {self.chat_id}...")
+            print(f"✈️ Sending multi-pool card to Telegram Chat ID: {target_chat_id}...")
             async with httpx.AsyncClient() as client:
                 with open(image_path, "rb") as img_file:
                     response = await client.post(
                         self.api_url,
-                        data={"chat_id": self.chat_id, "caption": caption, "parse_mode": "Markdown"},
+                        data={"chat_id": target_chat_id, "caption": caption, "parse_mode": "Markdown"},
                         files={"photo": img_file}
                     )
 
