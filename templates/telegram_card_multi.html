@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            margin: 0;
+            padding: 50px 40px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #31363F;
+            width: 800px;
+            box-sizing: border-box;
+        }
+
+        .wrapper {
+            width: 720px;
+            background-color: #31363F;
+            border-radius: 24px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            border: 2px solid #5B6068;
+            overflow: hidden;
+            border-spacing: 0;
+            border-collapse: separate;
+            margin: 0 auto;
+        }
+
+        .header-td {
+            padding: 50px 45px 40px;
+            background: linear-gradient(135deg, #BAB3F3 0%, #D4CAD8 50%, #E5D1B9 100%);
+        }
+
+        .content-td { padding: 40px 45px; }
+
+        h1 { font-size: 36px !important; margin: 0 0 10px !important; line-height: 1.2; }
+        h2 { font-size: 20px !important; margin: 0; line-height: 1.3; }
+        h3 { font-size: 32px !important; margin: 0; }
+        p  { font-size: 16px !important; margin: 0; }
+
+        .metric-box {
+            background-color: #5B6068;
+            border-radius: 16px;
+            border: 2px solid #BAB3F3;
+            padding: 22px;
+        }
+
+        .row-title {
+            color: #E5D1B9;
+            font-size: 13px !important;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 800;
+            margin: 0 0 10px !important;
+        }
+
+        .pill {
+            display: inline-block;
+            padding: 8px 14px;
+            border-radius: 999px;
+            border: 2px solid #BAB3F3;
+            color: #E5D1B9;
+            background-color: rgba(91, 96, 104, 0.35);
+            font-weight: 800;
+            font-size: 14px !important;
+        }
+    </style>
+</head>
+<body>
+    <table class="wrapper">
+        <tr>
+            <td class="header-td">
+                <table width="100%">
+                    <tr>
+                        <td style="vertical-align: middle;">
+                            <h1 style="color: #31363F; font-weight: 900; margin: 0;">Pools Comparison</h1>
+                            <p style="color: #31363F; font-weight: 800; opacity: 0.85; text-transform: uppercase; margin-top: 6px;">
+                                📊 {{ pool_count }} Pools • 15-Day Analysis
+                            </p>
+                        </td>
+                        <td style="vertical-align: middle; text-align: right;">
+                            <img src="https://cryptologos.cc/logos/balancer-bal-logo.png" width="80" height="80" style="display: block; margin-left: auto;" />
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+
+        <tr>
+            <td class="content-td" style="padding-bottom: 28px;">
+                <div class="metric-box">
+                    <p class="row-title">💰 Portfolio Totals</p>
+                    <table width="100%">
+                        <tr>
+                            <td width="50%" valign="top">
+                                <p style="color:#BAB3F3; font-weight: 800; font-size: 12px !important; text-transform: uppercase; margin:0 0 6px !important;">Total Fees (15d)</p>
+                                <h3 style="color:#E5D1B9; font-weight: 900;">{{ total_fees }}</h3>
+                            </td>
+                            <td width="50%" valign="top" style="text-align:right;">
+                                <p style="color:#BAB3F3; font-weight: 800; font-size: 12px !important; text-transform: uppercase; margin:0 0 6px !important;">Weighted Avg APR</p>
+                                <h3 style="color:#E5D1B9; font-weight: 900;">{{ total_apr }}</h3>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </td>
+        </tr>
+
+        <tr>
+            <td style="padding: 0 45px 26px;">
+                <div class="metric-box">
+                    <p class="row-title">🏆 Top 3 by Trading Volume</p>
+                    {% for pool in top_3_volume %}
+                    <table width="100%" style="margin-bottom: 12px;">
+                        <tr>
+                            <td width="10%" valign="middle">
+                                <span class="pill">{{ pool.rank }}</span>
+                            </td>
+                            <td width="60%" valign="middle">
+                                <p style="color:#E5D1B9; font-weight: 800; font-size: 15px !important; margin:0;">{{ pool.name }}</p>
+                                <p style="color:#BAB3F3; font-weight: 700; font-size: 12px !important; margin-top:6px;">{{ pool.percentage }} of total</p>
+                            </td>
+                            <td width="30%" valign="middle" style="text-align:right;">
+                                <p style="color:#E5D1B9; font-weight: 900; font-size: 16px !important;">{{ pool.value }}</p>
+                            </td>
+                        </tr>
+                    </table>
+                    {% endfor %}
+                </div>
+            </td>
+        </tr>
+
+        <tr>
+            <td style="padding: 0 45px 45px;">
+                <div class="metric-box">
+                    <p class="row-title">💎 Top 3 by TVL Growth</p>
+                    {% for pool in top_3_tvl %}
+                    <table width="100%" style="margin-bottom: 12px;">
+                        <tr>
+                            <td width="10%" valign="middle">
+                                <span class="pill">{{ pool.rank }}</span>
+                            </td>
+                            <td width="60%" valign="middle">
+                                <p style="color:#E5D1B9; font-weight: 800; font-size: 15px !important; margin:0;">{{ pool.name }}</p>
+                                <p style="color:{% if pool.percentage.startswith('+') %}#4ade80{% else %}#f87171{% endif %}; font-weight: 900; font-size: 12px !important; margin-top:6px;">
+                                    {{ pool.percentage }}
+                                </p>
+                            </td>
+                            <td width="30%" valign="middle" style="text-align:right;">
+                                <p style="color:#E5D1B9; font-weight: 900; font-size: 16px !important;">{{ pool.value }}</p>
+                            </td>
+                        </tr>
+                    </table>
+                    {% endfor %}
+                </div>
+            </td>
+        </tr>
+
+        <tr>
+            <td style="padding: 30px 45px; background-color: #4a4e57; border-top: 2px solid #BAB3F3;">
+                <p style="color: #E5D1B9; font-weight: 700; margin: 0 0 6px; font-size: 13px !important;">📅 Generated: {{ timestamp }}</p>
+                <p style="color: #BAB3F3; opacity: 0.85; margin: 0; font-size: 13px !important;">⚡ Data sourced from Balancer V2/V3 GraphQL APIs</p>
+            </td>
+        </tr>
+    </table>
+
+    <p style="text-align: center; color: #5B6068; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-top: 25px;">
+        POWERED BY BALANCER PROTOCOL
+    </p>
+</body>
+</html>

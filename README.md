@@ -14,6 +14,7 @@ A FastAPI-based web service that generates and emails performance reports for Ba
 - ⚡ Async/await for efficient API calls
 - 🔒 Type-safe with Pydantic models
 - 🔄 Smart fallback: Tries V3 API first, then V2 Subgraph
+- 📨 **Telegram Integration** - Sends rich image cards with key pool metrics to a Telegram chat for single-pool reports
 
 ## Metrics Tracked
 
@@ -75,6 +76,10 @@ BALANCER_V3_API=https://api-v3.balancer.fi/graphql
 BALANCER_V2_SUBGRAPH=https://api.thegraph.com/subgraphs/name/balancer-labs/balancer-v2
 DEFAULT_CHAIN=MAINNET          # For API queries (MAINNET, ARBITRUM, POLYGON, etc.)
 BLOCKCHAIN_NAME=ethereum       # For balancer.fi URLs (ethereum, arbitrum, polygon, etc.)
+
+# Telegram Integration
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+TELEGRAM_CHAT_ID=your_telegram_chat_id
 ```
 
 **Multi-Chain Support:**
@@ -108,7 +113,11 @@ FastAPI provides automatic interactive documentation:
 
 ### Generate a Single Pool Report
 
-Send a POST request to `/report` with one pool:
+Send a POST request to `/report` with one pool.
+
+For single-pool requests, the service:
+- Sends an HTML email report to the configured `recipient_email`
+- Sends a Telegram image card + markdown summary to the configured chat ID (if Telegram is configured)
 
 ```bash
 curl -X POST "http://localhost:8000/report" \
@@ -121,7 +130,11 @@ curl -X POST "http://localhost:8000/report" \
 
 ### Generate a Multi-Pool Comparison Report
 
-Send a POST request with multiple pools:
+Send a POST request with multiple pools.
+
+For multi-pool requests, the service:
+- Sends an HTML summary email report to the configured `recipient_email`
+- Sends a Telegram image card + markdown summary to the configured chat ID (if Telegram is configured)
 
 ```bash
 curl -X POST "http://localhost:8000/report" \
@@ -183,7 +196,10 @@ Root endpoint with API information.
 
 ### POST /report
 
-Generate and send a pool performance report via email (single or multiple pools).
+Generate and send a pool performance report.
+
+- **Single pool:** HTML email report + Telegram card (if Telegram is configured)
+- **Multiple pools:** HTML email summary report + Telegram card (multi-pool comparison)
 
 **Request Body (Single Pool):**
 ```json
@@ -236,7 +252,8 @@ pool-report/
 ├── services/
 │   ├── balancer_api.py       # GraphQL queries to Balancer APIs
 │   ├── metrics_calculator.py # Metrics comparison logic
-│   └── email_sender.py       # SMTP email sending
+│   ├── email_sender.py       # SMTP email sending
+│   └── telegram_sender.py    # Telegram card generation and sending
 ├── templates/
 │   ├── email_report.html     # Single pool email template (responsive, gradient design)
 │   └── email_report_multi.html  # Multi-pool comparison email template

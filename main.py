@@ -87,7 +87,9 @@ async def health_check():
 )
 async def generate_report(request: ReportRequest):
     """
-    Generate and send a pool performance report via Telegram (Single Pool) or Email (Multi-pool).
+    Generate and send a pool performance report via Email.
+    - Single pool: Email report (and Telegram card as an extra channel)
+    - Multi-pool: Email summary report
     
     Args:
         request: ReportRequest containing pool_addresses (list) and recipient_email
@@ -101,15 +103,15 @@ async def generate_report(request: ReportRequest):
     try:
         # Initialize services
         calculator = MetricsCalculator()
-        email_sender = EmailSender()       # Kept for multi-pool fallback
-        telegram_sender = TelegramSender() # New Telegram service
+        email_sender = EmailSender()
+        telegram_sender = TelegramSender()  # Used as an additional channel for single-pool
         
         # Determine if single or multiple pools
         is_multi_pool = len(request.pool_addresses) > 1
         
         if is_multi_pool:
             # ---------------------------------------------------------
-            # MULTI-POOL: Keep using Email for now (Summary Report)
+            # MULTI-POOL: Email summary report
             # ---------------------------------------------------------
             print(f"📊 Generating comparison report for {len(request.pool_addresses)} pools...")
             
@@ -134,6 +136,11 @@ async def generate_report(request: ReportRequest):
             )
             
             print(f"✅ Comparison report sent successfully!")
+
+            # Also send Telegram card (secondary channel)
+            print("✈️ Sending Telegram multi-pool Card to Chat ID...")
+            await telegram_sender.send_multi_pool_report(metrics_data=metrics_data)
+            print("✅ Telegram multi-pool report sent successfully!")
             
             return ReportResponse(
                 status="sent",
@@ -144,10 +151,10 @@ async def generate_report(request: ReportRequest):
         
         else:
             # ---------------------------------------------------------
-            # SINGLE POOL: Switch to Telegram (Image Card + Markdown)
+            # SINGLE POOL: Email report + Telegram card
             # ---------------------------------------------------------
             pool_address = request.pool_addresses[0]
-            print(f"📊 Generating Telegram report for pool: {pool_address}")
+            print(f"📊 Generating report for pool: {pool_address}")
             
             # Calculate metrics
             print("🔍 Fetching pool data and calculating metrics...")
@@ -178,13 +185,22 @@ async def generate_report(request: ReportRequest):
             metrics_data["pool_url"] = pool_url_link
             metrics_data["timestamp"] = current_time
             
-            # Send to Telegram
+            # Send EMAIL report (primary channel)
+            print(f"📧 Sending email report to {request.recipient_email}...")
+            await email_sender.send_pool_report(
+                recipient_email=request.recipient_email,
+                pool_name=metrics.pool_name,
+                metrics_data=metrics_data,
+                multi_pool=False
+            )
+            print(f"✅ Email report sent successfully!")
+
+            # Optionally, also send Telegram card (secondary channel)
             print(f"✈️ Sending Telegram Card to Chat ID...")
             await telegram_sender.send_pool_report(
                 pool_data=pool_data,
                 metrics_data=metrics_data
             )
-            
             print(f"✅ Telegram report sent successfully!")
             
             return ReportResponse(
