@@ -8,12 +8,68 @@ import httpx
 import os
 from sqlalchemy.orm import Session
 from database import SessionLocal, User, UserPool
+from config import settings
 
 st.set_page_config(page_title="Pool Report Admin", layout="wide")
 
 # API Configuration - use environment variable or default to localhost
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 
+# Credenciais de autenticação - carregadas do .env via config.py
+ADMIN_USERNAME = settings.admin_username
+ADMIN_PASSWORD = settings.admin_password
+
+# Inicializar estado de autenticação
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+# Função de autenticação
+def check_credentials(username, password):
+    return username == ADMIN_USERNAME and password == ADMIN_PASSWORD
+
+# Página de Login
+if not st.session_state.authenticated:
+    # Centralizar o formulário de login
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Logo/Título
+        st.markdown(
+            """
+            <div style='text-align: center;'>
+                <h1>Pool Report Admin</h1>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Formulário de login
+        with st.form("login_form"):
+            username = st.text_input("Usuário", placeholder="Digite seu usuário")
+            password = st.text_input("Senha", type="password", placeholder="Digite sua senha")
+            
+            col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
+            with col_btn2:
+                submit_button = st.form_submit_button("🔐 Entrar", use_container_width=True)
+            
+            if submit_button:
+                if check_credentials(username, password):
+                    st.session_state.authenticated = True
+                    st.rerun()
+                else:
+                    st.error("❌ Usuário ou senha incorretos")
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.caption("Pool Report Admin Panel • Sistema de Gerenciamento de Usuários")
+    
+    st.stop()
+
+# Conteúdo principal (apenas visível após autenticação)
 st.title("🏊 Pool Report - User Management")
 
 # Create database session
