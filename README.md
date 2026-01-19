@@ -7,10 +7,10 @@ A FastAPI-based web service that generates and emails performance reports for Ba
 - 📊 **Works with Both V2 and V3 Pools** - Automatically detects pool version
 - 🔀 **Multi-Pool Comparison** - Compare multiple pools with rankings and totals
 - 📈 Compares current metrics with 15-day historical data
-- 📧 Sends beautifully styled HTML email reports matching balancer.fi design
+- 📧 Sends beautifully styled HTML email reports with responsive design, gradient headers, and dark theme matching balancer.fi design
 - 🏆 Rankings: Top 3 pools by Volume and TVL
 - 💰 Aggregated metrics: Total fees and weighted average APR
-- 🚀 FastAPI with automatic API documentation
+- 🚀 FastAPI with automatic API documentation and lifecycle management
 - ⚡ Async/await for efficient API calls
 - 🔒 Type-safe with Pydantic models
 - 🔄 Smart fallback: Tries V3 API first, then V2 Subgraph
@@ -152,7 +152,34 @@ Or use the interactive Swagger UI at `/docs` to test the endpoint.
 curl http://localhost:8000/health
 ```
 
+### API Information
+
+```bash
+curl http://localhost:8000/
+```
+
+Returns API information including available endpoints.
+
 ## API Endpoints
+
+### GET /
+
+Root endpoint with API information.
+
+**Response:**
+```json
+{
+  "name": "Balancer Pool Reporter",
+  "version": "1.0.0",
+  "description": "Generate and email performance reports for Balancer pools",
+  "endpoints": {
+    "health": "/health",
+    "report": "/report (POST)",
+    "docs": "/docs",
+    "redoc": "/redoc"
+  }
+}
+```
 
 ### POST /report
 
@@ -211,7 +238,8 @@ pool-report/
 │   ├── metrics_calculator.py # Metrics comparison logic
 │   └── email_sender.py       # SMTP email sending
 ├── templates/
-│   └── email_report.html     # Balancer-styled email template
+│   ├── email_report.html     # Single pool email template (responsive, gradient design)
+│   └── email_report_multi.html  # Multi-pool comparison email template
 ├── requirements.txt          # Python dependencies
 ├── .env.example              # Example environment variables
 └── README.md                 # This file
