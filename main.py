@@ -21,9 +21,6 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for the FastAPI app."""
     # Startup
     print("🚀 Starting Balancer Pool Reporter API...")
-    print(f"📊 Balancer V3 API: {settings.balancer_v3_api}")
-    print(f"📈 Balancer V2 Subgraph: {settings.balancer_v2_subgraph}")
-    print(f"📧 Email from: {settings.from_email}")
     yield
     # Shutdown
     print("👋 Shutting down Balancer Pool Reporter API...")
@@ -117,7 +114,12 @@ async def generate_report(request: ReportRequest):
             
             # Calculate metrics for all pools
             print("🔍 Fetching data for all pools...")
-            multi_metrics = await calculator.calculate_multi_pool_metrics(request.pool_addresses)
+            # Convert RankingMetric enums to strings for the calculator
+            ranking_by = [metric.value for metric in request.ranking_by] if request.ranking_by else []
+            multi_metrics = await calculator.calculate_multi_pool_metrics(
+                request.pool_addresses,
+                ranking_by=ranking_by
+            )
             
             print(f"✅ Metrics calculated for {len(multi_metrics.pools)} pools")
             print(f"   Total Fees: ${multi_metrics.total_fees:,.2f}")
@@ -154,16 +156,8 @@ async def generate_report(request: ReportRequest):
             # SINGLE POOL: Email report + Telegram card
             # ---------------------------------------------------------
             pool_address = request.pool_addresses[0]
-            print(f"📊 Generating report for pool: {pool_address}")
-            
-            # Calculate metrics
-            print("🔍 Fetching pool data and calculating metrics...")
+
             metrics = await calculator.calculate_pool_metrics(pool_address)
-            
-            print(f"✅ Metrics calculated for {metrics.pool_name}")
-            print(f"   TVL: ${metrics.tvl_current:,.2f} ({metrics.tvl_change_percent:+.2f}%)")
-            print(f"   Volume (15d): ${metrics.volume_15_days:,.2f}")
-            print(f"   Fees (15d): ${metrics.fees_15_days:,.2f}")
             
             # Get pool data for token info
             pool_data = await calculator.api.get_current_pool_data(pool_address)
@@ -185,8 +179,7 @@ async def generate_report(request: ReportRequest):
             metrics_data["pool_url"] = pool_url_link
             metrics_data["timestamp"] = current_time
             
-            # Send EMAIL report (primary channel)
-            print(f"📧 Sending email report to {request.recipient_email}...")
+            # Send email
             await email_sender.send_pool_report(
                 recipient_email=request.recipient_email,
                 pool_name=metrics.pool_name,
