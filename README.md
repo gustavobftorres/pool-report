@@ -320,16 +320,6 @@ uvicorn main:app --reload --port 8000
 
 You can test email generation without sending by examining the logs or temporarily modifying the email sender to save HTML to a file.
 
-## Future Enhancements
-
-- [ ] Support for multiple pools in a single report
-- [ ] Add charts and visualizations
-- [ ] Store historical reports in a database
-- [ ] Scheduled reports (daily/weekly cron jobs)
-- [ ] Support for multiple email recipients
-- [ ] Webhook notifications
-- [ ] WebSocket support for real-time updates
-
 ## License
 
 MIT
