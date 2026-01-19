@@ -52,3 +52,9 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Temporary Files
+temp_images/
+
+# Streamlit
+.streamlit/secrets.toml

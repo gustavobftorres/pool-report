@@ -2,23 +2,63 @@
 Pydantic models for request/response validation.
 """
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field
+from enum import Enum
+from pydantic import BaseModel, EmailStr, Field, model_validator
+
+
+class RankingMetric(str, Enum):
+    """Metrics available for ranking pools in multi-pool reports."""
+    
+    VOLUME = "volume"
+    TVL_GROWTH = "tvl_growth"
+    SWAP_FEE = "swap_fee"
+    REBALANCE_COUNT = "rebalance_count"
+    BOOSTED_APR = "boosted_apr"
 
 
 class ReportRequest(BaseModel):
-    """Request model for generating a pool report."""
+    """Request model for generating a pool report (single or multiple pools)."""
     
-    pool_address: str = Field(
-        ...,
-        description="Ethereum address of the Balancer pool",
-        pattern="^0x[a-fA-F0-9]{40}$",
-        examples=["0x3de27efa2f1aa663ae5d458857e731c129069f29"]
+    pool_addresses: list[str] | None = Field(
+        default=None,
+        description="List of Ethereum addresses of Balancer pools (1 or more)",
+        examples=[["0x3de27efa2f1aa663ae5d458857e731c129069f29"]],
+        min_length=1
+    )
+    user_id: int | None = Field(
+        default=None,
+        description="Telegram user ID to lookup assigned pools",
+        examples=[123456789]
     )
     recipient_email: EmailStr = Field(
         ...,
         description="Email address to send the report to",
         examples=["user@example.com"]
     )
+    ranking_by: list[RankingMetric] | None = Field(
+        default=[RankingMetric.VOLUME, RankingMetric.TVL_GROWTH],
+        description="Metrics to rank pools by (for multi-pool reports)"
+    )
+    telegram_chat_id: str | None = Field(
+        default=None,
+        description="Optional Telegram chat ID to send report to (overrides env variable)",
+        examples=["123456789"]
+    )
+    
+    # For backwards compatibility, also accept single pool_address
+    @classmethod
+    def model_validate(cls, obj):
+        # If old format with pool_address, convert to pool_addresses
+        if isinstance(obj, dict) and "pool_address" in obj and "pool_addresses" not in obj:
+            obj["pool_addresses"] = [obj.pop("pool_address")]
+        return super().model_validate(obj)
+    
+    @model_validator(mode='after')
+    def check_pools_or_user(self):
+        """Ensure either pool_addresses or user_id is provided."""
+        if not self.pool_addresses and not self.user_id:
+            raise ValueError("Either pool_addresses or user_id must be provided")
+        return self
 
 
 class ReportResponse(BaseModel):
@@ -64,9 +104,42 @@ class PoolMetrics(BaseModel):
     tvl_change_percent: float
     
     volume_15_days: float
+    volume_change_percent: float
     fees_15_days: float
+    fees_change_percent: float
     
     apr_current: float | None = None
     
     pool_name: str
     pool_address: str
+    pool_url: str | None = None  
+    
+    # Static metrics
+    pool_type: str  
+    swap_fee: float 
+    is_core_pool: bool = False
+    
+    # Pool-type specific (Optional)
+    token_weights: dict[str, float] | None = None  
+    boosted_apr: float | None = None  # Boosted only
+    boosted_apr_15d_ago: float | None = None
+    surge_fees: float | None = None  # Surge only
+    surge_fees_15d_ago: float | None = None
+    rebalance_count_15d: int | None = None  # Gyro/LVR only
+
+
+class MultiPoolMetrics(BaseModel):
+    """Model for multiple pools comparison metrics."""
+    
+    pools: list[PoolMetrics]
+    
+    # Rankings
+    top_3_by_volume: list[tuple[str, float, float, str | None]]  # (pool_name, volume, percentage_of_total, pool_url)
+    top_3_by_tvl: list[tuple[str, float, float, str | None]]     # (pool_name, tvl_increase, percentage_change, pool_url)
+    
+    # Custom configurable rankings
+    custom_rankings: dict[str, list[tuple[str, float, str | None]]] = {}  # {metric_name: [(pool_name, value, pool_url)]}
+    
+    # Totals
+    total_fees: float
+    total_apr: float

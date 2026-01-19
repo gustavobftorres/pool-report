@@ -17,11 +17,11 @@ class BalancerAPI:
     """Service for interacting with Balancer V2 and V3 APIs."""
     
     def __init__(self):
-        # Use BALANCER_GQL_ENDPOINT if provided, otherwise use individual endpoints
         self.gql_endpoint = settings.balancer_gql_endpoint
         self.v3_api_url = settings.balancer_v3_api
         self.v2_subgraph_url = self.gql_endpoint or settings.balancer_v2_subgraph
-        self.chain = settings.default_chain
+        self.chain = settings.default_chain  # For API queries (e.g., MAINNET)
+        self.blockchain_name = settings.blockchain_name  # For balancer.fi URLs (e.g., ethereum)
         
         if self.gql_endpoint:
             print(f"🔗 Using Balancer GQL Endpoint: {self.gql_endpoint}")
@@ -78,19 +78,19 @@ class BalancerAPI:
         Returns:
             Dictionary containing pool data
         """
-        # If using custom GQL endpoint, try V2 subgraph query format first
         if self.gql_endpoint:
-            print(f"🔍 Querying V2 subgraph by address...")
+            print(f"🔍 Querying V2 subgraph by address: {pool_address}")
             try:
                 pool = await self._get_v2_pool_by_address(pool_address)
                 if pool:
                     print(f"✅ Found V2 pool: {pool.get('name', pool.get('id'))}")
                     return pool
+                else:
+                    print(f"⚠️  Pool not found in V2 subgraph for address: {pool_address}")
             except Exception as e:
-                print(f"⚠️  V2 query failed: {str(e)}")
+                print(f"⚠️  V2 query error for {pool_address}: {str(e)}")
         
         # Try V3 API format
-        print(f"🔍 Trying V3 API...")
         try:
             query = """
             query GetPool($id: String!, $chain: GqlChain!) {
@@ -104,6 +104,7 @@ class BalancerAPI:
                   totalLiquidity
                   volume24h
                   fees24h
+                  swapFee
                   aprItems {
                     id
                     title
@@ -115,6 +116,7 @@ class BalancerAPI:
                   address
                   symbol
                   name
+                  weight
                 }
               }
             }
@@ -130,6 +132,9 @@ class BalancerAPI:
             
             if pool:
                 print(f"✅ Found V3 pool: {pool.get('name')}")
+                # Add metadata for URL generation
+                pool['_api_version'] = 'v3'
+                pool['_blockchain'] = self.blockchain_name
                 return pool
         except Exception as e:
             print(f"⚠️  V3 API failed: {str(e)}")
@@ -149,7 +154,6 @@ class BalancerAPI:
         Returns:
             Pool data in normalized format
         """
-        # Use Bytes! type for address like in the working example
         query = """
         query PoolByAddress($address: Bytes!) {
           pools(first: 1, where: { address: $address }) {
@@ -192,6 +196,9 @@ class BalancerAPI:
             "name": v2_pool.get("name") or f"Pool {v2_pool.get('poolType', 'Unknown')}",
             "type": v2_pool.get("poolType", "Unknown"),
             "version": 2,
+            "swapFee": v2_pool.get("swapFee", "0"),  # Add swap fee from V2 pool
+            "_api_version": "v2",  # Add metadata for URL generation
+            "_blockchain": self.blockchain_name,  # Blockchain name for balancer.fi URLs
             "dynamicData": {
                 "totalLiquidity": v2_pool.get("totalLiquidity", "0"),
                 "volume24h": "0",  # Not available in single query
@@ -202,31 +209,119 @@ class BalancerAPI:
                 {
                     "address": token.get("address"),
                     "symbol": token.get("symbol"),
-                    "name": token.get("name", token.get("symbol"))
+                    "name": token.get("name", token.get("symbol")),
+                    "weight": token.get("weight")  # Include weight for weighted pools
                 }
                 for token in v2_pool.get("tokens", [])
             ]
         }
     
-    async def get_pool_snapshots(
+    async def get_v3_pool_snapshots(
         self,
         pool_address: str,
         days_back: int = 30
     ) -> List[Dict[str, Any]]:
         """
-        Get historical pool snapshots from Balancer V2 Subgraph.
+        Get historical pool snapshots from Balancer V3 API.
         
         Args:
-            pool_address: Pool address or full pool ID
+            pool_address: Pool address
             days_back: Number of days of historical data to fetch
             
         Returns:
             List of pool snapshots with timestamp, liquidity, volume, and fees
         """
-        # First, try to get the full pool ID if we only have address
+        # Calculate timestamp range
+        end_timestamp = int(datetime.utcnow().timestamp())
+        start_timestamp = int((datetime.utcnow() - timedelta(days=days_back)).timestamp())
+        
+        query = """
+        query GetPoolSnapshots($id: String!, $chain: GqlChain!, $range: GqlPoolSnapshotDataRange!) {
+          poolGetSnapshots(id: $id, chain: $chain, range: $range) {
+            timestamp
+            totalLiquidity
+            volume24h
+            fees24h
+            sharePrice
+          }
+        }
+        """
+        
+        variables = {
+            "id": pool_address.lower(),
+            "chain": self.chain,
+            "range": "THIRTY_DAYS"
+        }
+        
+        try:
+            print(f"   Attempting V3 snapshot query with range: THIRTY_DAYS")
+            print(f"   Query variables: id={pool_address.lower()}, chain={self.chain}")
+            data = await self._execute_query(self.v3_api_url, query, variables)
+            snapshots = data.get("poolGetSnapshots", [])
+            
+            if not snapshots:
+                print(f"⚠️  No snapshots returned from V3 API (empty result)")
+                return []
+            
+            # Normalize V3 snapshots to match V2 format
+            normalized_snapshots = []
+            cumulative_volume = 0
+            cumulative_fees = 0
+            
+            for snapshot in snapshots:
+                timestamp = int(snapshot.get("timestamp", 0))
+                if timestamp >= start_timestamp:
+                    cumulative_volume += float(snapshot.get("volume24h", 0))
+                    cumulative_fees += float(snapshot.get("fees24h", 0))
+                    
+                    normalized_snapshots.append({
+                        "timestamp": timestamp,
+                        "liquidity": snapshot.get("totalLiquidity", "0"),
+                        "swapVolume": str(cumulative_volume),
+                        "swapFees": str(cumulative_fees),
+                        "swapsCount": 0
+                    })
+            
+            print(f"✅ Got {len(normalized_snapshots)} V3 snapshots")
+            return normalized_snapshots
+            
+        except BalancerAPIError as e:
+            error_msg = str(e)
+            print(f"⚠️  V3 snapshots query failed: {error_msg}")
+            if "GraphQL errors" in error_msg:
+                print(f"   GraphQL Error Details: {error_msg}")
+            print(f"   V3 historical snapshots may not be available through this API endpoint yet")
+            print(f"   Falling back to estimated metrics based on 24h data")
+            return []
+        except Exception as e:
+            print(f"⚠️  Unexpected error in V3 snapshots: {str(e)}")
+            print(f"   Falling back to estimated metrics based on 24h data")
+            return []
+    
+    async def get_pool_snapshots(
+        self,
+        pool_address: str,
+        days_back: int = 30,
+        pool_version: str | None = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get historical pool snapshots from Balancer API (V2 or V3).
+        
+        Args:
+            pool_address: Pool address or full pool ID
+            days_back: Number of days of historical data to fetch
+            pool_version: Pool version ("v2" or "v3"), auto-detected if None
+            
+        Returns:
+            List of pool snapshots with timestamp, liquidity, volume, and fees
+        """
+        if pool_version == "v3":
+            print(f"🔍 Fetching V3 snapshots for {pool_address}")
+            return await self.get_v3_pool_snapshots(pool_address, days_back)
+        
+
         pool_id = pool_address
         
-        # If we have a 42-char address and using GQL endpoint, get full pool ID first
         if len(pool_address) == 42 and self.gql_endpoint:
             try:
                 pool_data = await self._get_v2_pool_by_address(pool_address)
@@ -331,7 +426,8 @@ class BalancerAPI:
     async def get_snapshot_at_timestamp(
         self,
         pool_address: str,
-        target_timestamp: int
+        target_timestamp: int,
+        pool_version: str | None = None
     ) -> Dict[str, Any] | None:
         """
         Get the pool snapshot closest to a specific timestamp.
@@ -339,52 +435,36 @@ class BalancerAPI:
         Args:
             pool_address: Ethereum address of the pool
             target_timestamp: Target Unix timestamp
+            pool_version: Pool version ("v2" or "v3"), auto-detected if None
             
         Returns:
             Pool snapshot data or None if not found
         """
-        # Get snapshots around the target time (1 day window)
-        start_ts = target_timestamp - 86400  # 1 day before
-        end_ts = target_timestamp + 86400    # 1 day after
-        
-        query = """
-        query GetSnapshotNearTime($poolId: String!, $startTime: Int!, $endTime: Int!) {
-          poolSnapshots(
-            first: 10
-            orderBy: timestamp
-            orderDirection: asc
-            where: {
-              pool: $poolId
-              timestamp_gte: $startTime
-              timestamp_lte: $endTime
-            }
-          ) {
-            id
-            timestamp
-            liquidity
-            swapVolume
-            swapFees
-            swapsCount
-          }
-        }
-        """
-        
-        variables = {
-            "poolId": pool_address.lower(),
-            "startTime": start_ts,
-            "endTime": end_ts
-        }
-        
-        data = await self._execute_query(self.v2_subgraph_url, query, variables)
-        snapshots = data.get("poolSnapshots", [])
+        # Get snapshots (will automatically use V2 or V3 based on pool_version)
+        # Fetch 5 days of data to ensure we capture the target timestamp
+        snapshots = await self.get_pool_snapshots(
+            pool_address, 
+            days_back=5,
+            pool_version=pool_version
+        )
         
         if not snapshots:
             return None
         
+        # Filter snapshots within 1 day of target
+        nearby_snapshots = [
+            s for s in snapshots
+            if abs(int(s.get("timestamp", 0)) - target_timestamp) <= 86400
+        ]
+        
+        if not nearby_snapshots:
+            # No snapshots close enough, return None
+            return None
+        
         # Find the snapshot closest to target_timestamp
         closest_snapshot = min(
-            snapshots,
-            key=lambda s: abs(int(s["timestamp"]) - target_timestamp)
+            nearby_snapshots,
+            key=lambda s: abs(int(s.get("timestamp", 0)) - target_timestamp)
         )
         
         return closest_snapshot
