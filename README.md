@@ -2,8 +2,6 @@
 
 A FastAPI-based web service that generates and emails performance reports for Balancer v2/v3 liquidity pools. The service queries Balancer's GraphQL APIs to fetch pool metrics, compares current performance with data from 15 days ago, and sends beautifully styled reports via email and Telegram with visual change indicators and adaptive precision formatting.
 
-<<<<<<< HEAD
-=======
 ## Features
 
 - 📊 **Works with Both V2 and V3 Pools** - Automatically detects pool version
@@ -24,7 +22,6 @@ A FastAPI-based web service that generates and emails performance reports for Ba
 - 🔄 Smart fallback: Tries V3 API first, then V2 Subgraph
 - 📨 **Telegram Integration** - Sends rich image cards with key pool metrics to a Telegram chat for single-pool reports
 
->>>>>>> b25de0e (update README)
 ## Metrics Tracked
 
 ### Core Metrics (All Pools)
@@ -41,8 +38,6 @@ A FastAPI-based web service that generates and emails performance reports for Ba
 - **Rebalance Count** (Gyro/LVR pools): Number of rebalances in 15 days (when available)
 - **Surge Fees** (Stable Surge pools): Dynamic fee adjustments (when available)
 
-<<<<<<< HEAD
-=======
 ### Adaptive Precision
 Volume and fees change percentages automatically adjust decimal precision based on magnitude:
 - **< 0.01%**: 4 decimal places (e.g., `+0.0003%`) - for low-activity pools
@@ -69,7 +64,6 @@ V3 pools may have limited historical data availability:
 
 V2 pools have full historical comparison with accurate 15-day metrics from the V2 Subgraph.
 
->>>>>>> b25de0e (update README)
 ## Requirements
 
 - Python 3.11 or higher
@@ -346,8 +340,6 @@ uvicorn main:app --reload --port 8000
 
 You can test email generation without sending by examining the logs or temporarily modifying the email sender to save HTML to a file.
 
-<<<<<<< HEAD
-=======
 ## Future Enhancements
 
 - [x] Support for multiple pools in a single report ✅
@@ -360,7 +352,6 @@ You can test email generation without sending by examining the logs or temporari
 - [ ] WebSocket support for real-time updates
 - [ ] Full V3 pool historical data (pending V3 API availability)
 
->>>>>>> b25de0e (update README)
 ## License
 
 MIT
