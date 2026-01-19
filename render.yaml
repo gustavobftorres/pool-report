@@ -35,13 +35,4 @@ services:
       - key: TELEGRAM_CHAT_ID
         sync: false
       - key: DATABASE_URL
-        fromDatabase:
-          name: pool-report-db
-          property: connectionString
-
-databases:
-  # PostgreSQL Database
-  - name: pool-report-db
-    plan: free
-    databaseName: pool_report
-    user: pool_report_user
+        sync: false  # You'll enter your Supabase connection string
