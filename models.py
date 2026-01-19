@@ -3,7 +3,7 @@ Pydantic models for request/response validation.
 """
 from datetime import datetime
 from enum import Enum
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 
 class RankingMetric(str, Enum):
@@ -19,11 +19,16 @@ class RankingMetric(str, Enum):
 class ReportRequest(BaseModel):
     """Request model for generating a pool report (single or multiple pools)."""
     
-    pool_addresses: list[str] = Field(
-        ...,
+    pool_addresses: list[str] | None = Field(
+        default=None,
         description="List of Ethereum addresses of Balancer pools (1 or more)",
         examples=[["0x3de27efa2f1aa663ae5d458857e731c129069f29"]],
         min_length=1
+    )
+    user_id: int | None = Field(
+        default=None,
+        description="Telegram user ID to lookup assigned pools",
+        examples=[123456789]
     )
     recipient_email: EmailStr = Field(
         ...,
@@ -34,6 +39,11 @@ class ReportRequest(BaseModel):
         default=[RankingMetric.VOLUME, RankingMetric.TVL_GROWTH],
         description="Metrics to rank pools by (for multi-pool reports)"
     )
+    telegram_chat_id: str | None = Field(
+        default=None,
+        description="Optional Telegram chat ID to send report to (overrides env variable)",
+        examples=["123456789"]
+    )
     
     # For backwards compatibility, also accept single pool_address
     @classmethod
@@ -42,6 +52,13 @@ class ReportRequest(BaseModel):
         if isinstance(obj, dict) and "pool_address" in obj and "pool_addresses" not in obj:
             obj["pool_addresses"] = [obj.pop("pool_address")]
         return super().model_validate(obj)
+    
+    @model_validator(mode='after')
+    def check_pools_or_user(self):
+        """Ensure either pool_addresses or user_id is provided."""
+        if not self.pool_addresses and not self.user_id:
+            raise ValueError("Either pool_addresses or user_id must be provided")
+        return self
 
 
 class ReportResponse(BaseModel):
