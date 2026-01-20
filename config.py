@@ -32,6 +32,18 @@ class Settings(BaseSettings):
     # Database Configuration (required for both FastAPI and Streamlit)
     database_url: str = "postgresql://localhost:5432/pool_report"
     
+    # OpenAI Configuration (for insights generation)
+    openai_api_key: str | None = None
+    enable_insights: bool = True
+    # Multi-agent insights models
+    openai_orchestrator_model: str = "gpt-4o-mini"
+    openai_specialist_model: str = "gpt-4o"
+    openai_summarizer_model: str = "gpt-4o-mini"
+    # Docs / grounding options
+    enable_insights_live_docs: bool = False
+    insights_docs_base_urls: list[str] | None = None
+    insights_max_doc_chars: int = 6000
+    
     # Optional default pool
     default_pool_address: str | None = None
     

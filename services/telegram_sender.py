@@ -1,8 +1,11 @@
 import os
 import httpx
+from typing import Optional
 from jinja2 import Environment, FileSystemLoader
 from html2image import Html2Image
 from config import settings
+from services.insights_generator import InsightsGenerator
+from models import PoolMetrics, MultiPoolMetrics
 
 class TelegramSender:
     def __init__(self):
@@ -35,6 +38,9 @@ class TelegramSender:
         # Setup template environment
         self.template_env = Environment(loader=FileSystemLoader("templates"))
         
+        # Initialize insights generator
+        self.insights_generator = InsightsGenerator()
+        
         # Ensure temp directory exists
         os.makedirs("temp_images", exist_ok=True)
 
@@ -58,6 +64,42 @@ class TelegramSender:
         
         return None
     
+    def _truncate_caption(self, caption: str, max_length: int = 1024) -> str:
+        """
+        Truncate caption to Telegram's limit, preserving structure.
+        If truncation is needed, cut insights first, then other content.
+        """
+        if len(caption) <= max_length:
+            return caption
+        
+        # Try to preserve base metrics, truncate insights if present
+        if "\n\nInsights:\n" in caption:
+            base, insights_section = caption.split("\n\nInsights:\n", 1)
+            base_len = len(base) + len("\n\nInsights:\n")
+            available = max_length - base_len - 20  # Reserve for "... (truncated)"
+            
+            if available > 50:
+                # Truncate insights line by line
+                insight_lines = insights_section.split("\n")
+                truncated_insights = []
+                current_len = 0
+                for line in insight_lines:
+                    if current_len + len(line) + 1 <= available:
+                        truncated_insights.append(line)
+                        current_len += len(line) + 1
+                    else:
+                        break
+                if truncated_insights:
+                    return base + "\n\nInsights:\n" + "\n".join(truncated_insights)
+                else:
+                    return base
+            else:
+                # Not enough space for insights, remove them
+                return base
+        
+        # No insights section, truncate from end
+        return caption[:max_length - 3] + "..."
+    
     async def send_message(self, chat_id: str, text: str):
         """
         Send a simple text message to a Telegram chat.
@@ -78,7 +120,13 @@ class TelegramSender:
             
             return response
 
-    async def send_pool_report(self, pool_data: dict, metrics_data: dict, chat_id: str | None = None):
+    async def send_pool_report(
+        self, 
+        pool_data: dict, 
+        metrics_data: dict, 
+        chat_id: str | None = None,
+        metrics: Optional[PoolMetrics] = None
+    ):
         """
         Generates an image card and sends it to Telegram with Markdown text.
         Falls back to text-only if image generation is not available.
@@ -87,6 +135,7 @@ class TelegramSender:
             pool_data: Pool information dictionary
             metrics_data: Formatted metrics dictionary
             chat_id: Optional chat ID to send to (defaults to env variable)
+            metrics: Optional PoolMetrics object for insights generation
         """
         try:
             # Use provided chat_id or fall back to default
@@ -95,15 +144,27 @@ class TelegramSender:
             # If image generation is not available, send text-only message
             if not self.image_support:
                 print("📝 Sending text-only Telegram message...")
+                pool_name = metrics_data.get('pool_name', 'Unknown Pool')
+                tvl = metrics_data.get('tvl_current', 'N/A')
+                tvl_change = metrics_data.get('tvl_change_percent', '0%')
+                volume = metrics_data.get('volume_15d', 'N/A')
+                fees = metrics_data.get('fees_15d', 'N/A')
+                apr = metrics_data.get('apr_current', 'N/A')
+                pool_url = metrics_data.get('pool_url', '#')
+                
                 caption = (
-                    f"💎 *Pool Performance Update*\n"
-                    f"*{metrics_data.get('pool_name', 'Unknown Pool')}*\n\n"
-                    f"💰 *TVL:* {metrics_data.get('tvl_current', 'N/A')} ({metrics_data.get('tvl_change_percent', '0%')})\n"
-                    f"📊 *Volume (15d):* {metrics_data.get('volume_15d', 'N/A')} ({metrics_data.get('volume_change_percent', '0%')})\n"
-                    f"💸 *Fees (15d):* {metrics_data.get('fees_15d', 'N/A')} ({metrics_data.get('fees_change_percent', '0%')})\n"
-                    f"🚀 *APR:* {metrics_data.get('apr_current', 'N/A')}\n\n"
-                    f"[🔗 View Pool on Balancer]({metrics_data.get('pool_url', '#')})"
+                    f"{pool_name}\n\n"
+                    f"TVL: {tvl} ({tvl_change})\n"
+                    f"Vol 15d: {volume}\n"
+                    f"Fees 15d: {fees}\n"
+                    f"APR: {apr}\n"
+                    f"{pool_url}"
                 )
+                # Generate and append insights for text-only mode too (limit to 4 bullets)
+                if metrics:
+                    insights = await self.insights_generator.generate_single_pool_insights(metrics, pool_data, max_bullets=4)
+                    if insights:
+                        caption += "\n\nInsights:\n" + insights
                 await self.send_message(str(target_chat_id), caption)
                 return
             
@@ -120,17 +181,32 @@ class TelegramSender:
             self.hti.screenshot(html_str=html_content, save_as=image_filename)
             image_path = os.path.join("temp_images", image_filename)
             
-            # 3. Prepare Markdown Caption
-            # Simple Markdown formatting for Telegram
+            # 3. Prepare Markdown Caption - Concise numeric format
+            pool_name = metrics_data.get('pool_name', 'Unknown Pool')
+            tvl = metrics_data.get('tvl_current', 'N/A')
+            tvl_change = metrics_data.get('tvl_change_percent', '0%')
+            volume = metrics_data.get('volume_15d', 'N/A')
+            fees = metrics_data.get('fees_15d', 'N/A')
+            apr = metrics_data.get('apr_current', 'N/A')
+            pool_url = metrics_data.get('pool_url', '#')
+            
             caption = (
-                f"💎 *Pool Performance Update*\n"
-                f"*{metrics_data.get('pool_name', 'Unknown Pool')}*\n\n"
-                f"💰 *TVL:* {metrics_data.get('tvl_current', 'N/A')} ({metrics_data.get('tvl_change_percent', '0%')})\n"
-                f"📊 *Volume (15d):* {metrics_data.get('volume_15d', 'N/A')}\n"
-                f"💸 *Fees (15d):* {metrics_data.get('fees_15d', 'N/A')}\n"
-                f"🚀 *APR:* {metrics_data.get('apr_current', 'N/A')}\n\n"
-                f"[🔗 View Pool on Balancer]({metrics_data.get('pool_url', '#')})"
+                f"{pool_name}\n\n"
+                f"TVL: {tvl} ({tvl_change})\n"
+                f"Vol 15d: {volume}\n"
+                f"Fees 15d: {fees}\n"
+                f"APR: {apr}\n"
+                f"{pool_url}"
             )
+            
+            # 3.5. Generate and append insights if metrics provided (limit to 4 bullets max)
+            if metrics:
+                insights = await self.insights_generator.generate_single_pool_insights(metrics, pool_data, max_bullets=4)
+                if insights:
+                    caption += "\n\nInsights:\n" + insights
+            
+            # Truncate to Telegram limit (1024 chars)
+            caption = self._truncate_caption(caption, max_length=1024)
 
             # 4. Send to Telegram
             print(f"✈️ Sending to Telegram Chat ID: {target_chat_id}...")
@@ -154,7 +230,13 @@ class TelegramSender:
         except Exception as e:
             print(f"❌ Error in TelegramSender: {str(e)}")
 
-    async def send_multi_pool_report(self, metrics_data: dict, chat_id: str | None = None):
+    async def send_multi_pool_report(
+        self, 
+        metrics_data: dict, 
+        chat_id: str | None = None,
+        metrics: Optional[MultiPoolMetrics] = None,
+        pools_data: Optional[list[dict]] = None
+    ):
         """
         Generates a multi-pool comparison image card and sends it to Telegram with Markdown text.
         Falls back to text-only if image generation is not available.
@@ -163,6 +245,8 @@ class TelegramSender:
         Args:
             metrics_data: Formatted multi-pool metrics dictionary
             chat_id: Optional chat ID to send to (defaults to env variable)
+            metrics: Optional MultiPoolMetrics object for insights generation
+            pools_data: Optional list of pool data dictionaries for insights generation
         """
         try:
             # Use provided chat_id or fall back to default
@@ -171,29 +255,36 @@ class TelegramSender:
             # If image generation is not available, send text-only message
             if not self.image_support:
                 print("📝 Sending text-only Telegram multi-pool message...")
+                pool_count = metrics_data.get('pool_count', 0)
+                total_fees = metrics_data.get('total_fees', 'N/A')
+                total_apr = metrics_data.get('total_apr', 'N/A')
+                
                 caption_lines = [
-                    "📊 *Pools Comparison Update*",
-                    f"*{metrics_data.get('pool_count', 0)} Pools • 15-Day Analysis*",
-                    "",
-                    f"💰 *Total Fees (15d):* {metrics_data.get('total_fees', 'N/A')}",
-                    f"🚀 *Weighted Avg APR:* {metrics_data.get('total_apr', 'N/A')}",
+                    f"{pool_count} Pools Analysis",
+                    f"Total Fees 15d: {total_fees}",
+                    f"Avg APR: {total_apr}",
                 ]
                 
-                top_vol = metrics_data.get("top_3_volume", [])[:3]
+                top_vol = metrics_data.get("top_3_volume", [])[:2]  # Limit to top 2
                 if top_vol:
-                    caption_lines.append("")
-                    caption_lines.append("🏆 *Top 3 by Trading Volume*")
+                    caption_lines.append("\nTop Volume:")
                     for p in top_vol:
-                        caption_lines.append(f"{p.get('rank')}. {p.get('name')} — {p.get('value')} ({p.get('percentage')} of total)")
+                        name = p.get('name', 'Unknown')[:30]  # Truncate long names
+                        caption_lines.append(f"{p.get('rank')}. {name}: {p.get('value')} ({p.get('percentage')}%)")
                 
-                top_tvl = metrics_data.get("top_3_tvl", [])[:3]
+                top_tvl = metrics_data.get("top_3_tvl", [])[:2]  # Limit to top 2
                 if top_tvl:
-                    caption_lines.append("")
-                    caption_lines.append("💎 *Top 3 by TVL Growth*")
+                    caption_lines.append("\nTop TVL Growth:")
                     for p in top_tvl:
-                        caption_lines.append(f"{p.get('rank')}. {p.get('name')} — {p.get('value')} ({p.get('percentage')})")
+                        name = p.get('name', 'Unknown')[:30]  # Truncate long names
+                        caption_lines.append(f"{p.get('rank')}. {name}: {p.get('value')} ({p.get('percentage')})")
                 
                 caption = "\n".join(caption_lines)
+                # Generate and append insights for text-only mode (limit to 3 bullets)
+                if metrics:
+                    insights = await self.insights_generator.generate_multi_pool_insights(metrics, pools_data, max_bullets=3)
+                    if insights:
+                        caption += "\n\nInsights:\n" + insights
                 await self.send_message(str(target_chat_id), caption)
                 return
             
@@ -208,30 +299,41 @@ class TelegramSender:
             self.hti.screenshot(html_str=html_content, save_as=image_filename)
             image_path = os.path.join("temp_images", image_filename)
 
-            # 3. Prepare Markdown Caption
+            # 3. Prepare Markdown Caption - Concise numeric format
+            pool_count = metrics_data.get('pool_count', 0)
+            total_fees = metrics_data.get('total_fees', 'N/A')
+            total_apr = metrics_data.get('total_apr', 'N/A')
+            
             caption_lines = [
-                "📊 *Pools Comparison Update*",
-                f"*{metrics_data.get('pool_count', 0)} Pools • 15-Day Analysis*",
-                "",
-                f"💰 *Total Fees (15d):* {metrics_data.get('total_fees', 'N/A')}",
-                f"🚀 *Weighted Avg APR:* {metrics_data.get('total_apr', 'N/A')}",
+                f"{pool_count} Pools Analysis",
+                f"Total Fees 15d: {total_fees}",
+                f"Avg APR: {total_apr}",
             ]
 
-            top_vol = metrics_data.get("top_3_volume", [])[:3]
+            top_vol = metrics_data.get("top_3_volume", [])[:2]  # Limit to top 2
             if top_vol:
-                caption_lines.append("")
-                caption_lines.append("🏆 *Top 3 by Trading Volume*")
+                caption_lines.append("\nTop Volume:")
                 for p in top_vol:
-                    caption_lines.append(f"{p.get('rank')}. {p.get('name')} — {p.get('value')} ({p.get('percentage')} of total)")
+                    name = p.get('name', 'Unknown')[:30]  # Truncate long names
+                    caption_lines.append(f"{p.get('rank')}. {name}: {p.get('value')} ({p.get('percentage')}%)")
 
-            top_tvl = metrics_data.get("top_3_tvl", [])[:3]
+            top_tvl = metrics_data.get("top_3_tvl", [])[:2]  # Limit to top 2
             if top_tvl:
-                caption_lines.append("")
-                caption_lines.append("💎 *Top 3 by TVL Growth*")
+                caption_lines.append("\nTop TVL Growth:")
                 for p in top_tvl:
-                    caption_lines.append(f"{p.get('rank')}. {p.get('name')} — {p.get('value')} ({p.get('percentage')})")
+                    name = p.get('name', 'Unknown')[:30]  # Truncate long names
+                    caption_lines.append(f"{p.get('rank')}. {name}: {p.get('value')} ({p.get('percentage')})")
 
             caption = "\n".join(caption_lines)
+            
+            # Generate and append insights (limit to 3 bullets max)
+            if metrics:
+                insights = await self.insights_generator.generate_multi_pool_insights(metrics, pools_data, max_bullets=3)
+                if insights:
+                    caption += "\n\nInsights:\n" + insights
+            
+            # Truncate to Telegram limit (1024 chars)
+            caption = self._truncate_caption(caption, max_length=1024)
 
             # 4. Send to Telegram
             print(f"✈️ Sending multi-pool card to Telegram Chat ID: {target_chat_id}...")

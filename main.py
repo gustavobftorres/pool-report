@@ -161,12 +161,17 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
                             pool_data=pool_data,
                             metrics_data=metrics_data,
                             chat_id=str(target_chat_id),
+                            metrics=metrics
                         )
                     else:
                         ranking_by = ["volume", "tvl_growth", "swap_fee"]
                         multi_metrics = await calculator.calculate_multi_pool_metrics(pool_addresses, ranking_by=ranking_by)
                         metrics_data = calculator.format_multi_pool_metrics_for_email(multi_metrics)
-                        await telegram_sender.send_multi_pool_report(metrics_data=metrics_data, chat_id=str(target_chat_id))
+                        await telegram_sender.send_multi_pool_report(
+                            metrics_data=metrics_data, 
+                            chat_id=str(target_chat_id),
+                            metrics=multi_metrics
+                        )
 
                 except Exception as e:
                     print(f"❌ Error generating Telegram client report for '{client_key}': {str(e)}")
@@ -353,6 +358,17 @@ async def generate_report(request: ReportRequest, db: Session = Depends(get_db))
             # Format metrics for email
             metrics_data = calculator.format_multi_pool_metrics_for_email(multi_metrics)
             
+            # Fetch per-pool data for insights (pool types, tokens, etc.)
+            # This is used only by the insights pipeline, not by the email templates.
+            pools_data: list[dict] = []
+            for addr in pool_addresses:
+                try:
+                    pool_info = await calculator.api.get_current_pool_data(addr)
+                except Exception as e:
+                    print(f"⚠️  Failed to fetch pool data for {addr}: {e}")
+                    pool_info = {"address": addr}
+                pools_data.append(pool_info)
+            
             # Send email
             print(f"📧 Sending comparison report to {request.recipient_email}...")
             if request.recipient_email and email_sender.enabled:
@@ -377,7 +393,9 @@ async def generate_report(request: ReportRequest, db: Session = Depends(get_db))
                 print(f"✈️ Sending Telegram multi-pool Card to Chat ID: {telegram_chat_id}...")
                 await telegram_sender.send_multi_pool_report(
                     metrics_data=metrics_data,
-                    chat_id=telegram_chat_id
+                    chat_id=telegram_chat_id,
+                    metrics=multi_metrics,
+                    pools_data=pools_data,
                 )
                 print("✅ Telegram multi-pool report sent successfully!")
             
@@ -440,7 +458,8 @@ async def generate_report(request: ReportRequest, db: Session = Depends(get_db))
                 await telegram_sender.send_pool_report(
                     pool_data=pool_data,
                     metrics_data=metrics_data,
-                    chat_id=telegram_chat_id
+                    chat_id=telegram_chat_id,
+                    metrics=metrics
                 )
                 print(f"✅ Telegram report sent successfully!")
             
