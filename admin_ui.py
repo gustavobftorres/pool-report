@@ -16,8 +16,13 @@ st.set_page_config(page_title="Pool Report Admin", layout="wide")
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 # Authentication credentials - loaded from .env via config.py
-ADMIN_USERNAME = settings.admin_username
-ADMIN_PASSWORD = settings.admin_password
+ADMIN_USERNAME = settings.admin_username or os.getenv("ADMIN_USERNAME", "")
+ADMIN_PASSWORD = settings.admin_password or os.getenv("ADMIN_PASSWORD", "")
+
+# Validate that admin credentials are set
+if not ADMIN_USERNAME or not ADMIN_PASSWORD:
+    st.error("⚠️ **Configuration Error**\n\nAdmin credentials are not configured. Please set `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables in Streamlit Cloud settings.")
+    st.stop()
 
 # Initialize authentication state
 if "authenticated" not in st.session_state:

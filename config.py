@@ -8,12 +8,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
-    # SMTP Configuration
+    # SMTP Configuration (optional - only needed for FastAPI service)
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
-    smtp_username: str
-    smtp_password: str
-    from_email: str
+    smtp_username: str = ""
+    smtp_password: str = ""
+    from_email: str = ""
     
     # Balancer API Configuration
     balancer_v3_api: str = "https://api-v3.balancer.fi/"
@@ -24,9 +24,9 @@ class Settings(BaseSettings):
     default_chain: str = "MAINNET"  # For API queries (e.g., MAINNET, ARBITRUM, POLYGON)
     blockchain_name: str = "ethereum"  # For balancer.fi URLs (e.g., ethereum, arbitrum, polygon)
 
-    # Telegram Config
-    telegram_bot_token: str
-    telegram_chat_id: str
+    # Telegram Config (optional - only needed for FastAPI service)
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
     
     # Database Configuration
     # Railway and other platforms inject DATABASE_URL automatically
@@ -36,8 +36,8 @@ class Settings(BaseSettings):
     default_pool_address: str | None = None
     
     # Admin UI Credentials
-    admin_username: str
-    admin_password: str
+    admin_username: str = ""
+    admin_password: str = ""
     
     model_config = SettingsConfigDict(
         env_file=".env",
