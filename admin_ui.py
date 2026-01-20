@@ -77,8 +77,31 @@ if not st.session_state.authenticated:
 # Main content (only visible after authentication)
 st.title("Pool Report Admin Panel - User Management")
 
-# Create database session
-db = SessionLocal()
+# Create database session with error handling
+try:
+    db = SessionLocal()
+    # Test connection
+    from sqlalchemy import text
+    db.execute(text("SELECT 1"))
+    db.commit()
+except Exception as e:
+    st.error(f"""
+    ⚠️ **Database Connection Error**
+    
+    Unable to connect to the database. Please check:
+    
+    1. **DATABASE_URL** is set in Streamlit Cloud settings
+    2. The connection string is a **public** connection string (not internal/private)
+    3. The database allows connections from external IPs
+    
+    **Error:** {str(e)}
+    
+    **How to fix:**
+    - If using Railway: Get the **Public** connection string from Railway dashboard
+    - Make sure the database accepts external connections
+    - Add it to Streamlit Cloud Secrets as `DATABASE_URL`
+    """)
+    st.stop()
 
 # Tabs
 tab1, tab2, tab3, tab4 = st.tabs(["👥 Users", "🏊 Manage Pools", "📧 Send Reports", "📊 Overview"])
