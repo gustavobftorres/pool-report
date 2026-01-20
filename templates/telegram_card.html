@@ -132,21 +132,35 @@
         </tr>
         
         <tr>
-            <td style="padding: 0 45px 40px;">
+            <td class="content-td" style="padding-top: 0;">
                 <table width="100%">
                     <tr>
-                        <td width="48%" valign="top">
-                            <div class="metric-box">
-                                <p style="color: #BAB3F3; font-size: 13px !important; text-transform: uppercase; font-weight: 700; margin: 0 0 15px;">💹 Volume (15d)</p>
-                                <h4 style="color: #ffffff; margin: 0; font-weight: 800;">{{ volume_15d }}</h4>
-                            </div>
+                        <td width="48%" style="padding: 18px; background-color: #5B6068; border-radius: 12px; border: 2px solid #BAB3F3; vertical-align: top;">
+                            <p style="margin: 0 0 6px; color: #BAB3F3; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">
+                                💹 TRADING VOLUME (15d)
+                            </p>
+                            <h4 style="margin: 0 0 8px; color: #ffffff; font-size: 20px; font-weight: 700; letter-spacing: -0.5px;">
+                                {{ volume_15d }}
+                            </h4>
+                            <p style="margin: 0; padding: 6px 10px; background-color: {% if volume_change_positive %}rgba(74, 222, 128, 0.1){% else %}rgba(248, 113, 113, 0.1){% endif %}; border-radius: 6px; border: 1px solid {% if volume_change_positive %}#4ade80{% else %}#f87171{% endif %};">
+                                <span style="font-size: 12px; font-weight: 700; color: {% if volume_change_positive %}#4ade80{% else %}#f87171{% endif %};">
+                                    {% if volume_change_positive %}📈{% else %}📉{% endif %} {{ volume_change_percent }}
+                                </span>
+                            </p>
                         </td>
                         <td width="4%"></td>
-                        <td width="48%" valign="top">
-                            <div class="metric-box">
-                                <p style="color: #BAB3F3; font-size: 13px !important; text-transform: uppercase; font-weight: 700; margin: 0 0 15px;">💰 Fees (15d)</p>
-                                <h4 style="color: #ffffff; margin: 0; font-weight: 800;">{{ fees_15d }}</h4>
-                            </div>
+                        <td width="48%" style="padding: 18px; background-color: #5B6068; border-radius: 12px; border: 2px solid #BAB3F3; vertical-align: top;">
+                            <p style="margin: 0 0 6px; color: #BAB3F3; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">
+                                💰 FEES COLLECTED (15d)
+                            </p>
+                            <h4 style="margin: 0 0 8px; color: #ffffff; font-size: 20px; font-weight: 700; letter-spacing: -0.5px;">
+                                {{ fees_15d }}
+                            </h4>
+                            <p style="margin: 0; padding: 6px 10px; background-color: {% if fees_change_positive %}rgba(74, 222, 128, 0.1){% else %}rgba(248, 113, 113, 0.1){% endif %}; border-radius: 6px; border: 1px solid {% if fees_change_positive %}#4ade80{% else %}#f87171{% endif %};">
+                                <span style="font-size: 12px; font-weight: 700; color: {% if fees_change_positive %}#4ade80{% else %}#f87171{% endif %};">
+                                    {% if fees_change_positive %}📈{% else %}📉{% endif %} {{ fees_change_percent }}
+                                </span>
+                            </p>
                         </td>
                     </tr>
                 </table>
