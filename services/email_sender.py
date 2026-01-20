@@ -1,6 +1,7 @@
 """
 Email sender service for sending pool performance reports via SMTP.
 """
+import asyncio
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -24,6 +25,14 @@ class EmailSender:
         self.smtp_username = settings.smtp_username
         self.smtp_password = settings.smtp_password
         self.from_email = settings.from_email
+        self.enabled = bool(
+            settings.enable_email
+            and self.smtp_host
+            and self.smtp_port
+            and self.smtp_username
+            and self.smtp_password
+            and self.from_email
+        )
         
         # Set up Jinja2 environment for template rendering
         template_dir = Path(__file__).parent.parent / "templates"
@@ -68,27 +77,33 @@ class EmailSender:
         Raises:
             EmailSenderError: If email sending fails
         """
-        try:
+        if not self.enabled:
+            print("ℹ️  Email sending disabled or SMTP not configured; skipping email.")
+            return
+
+        def _send_sync() -> None:
             # Create message
             message = MIMEMultipart('alternative')
             message['Subject'] = subject
             message['From'] = self.from_email
             message['To'] = recipient_email
-            
+
             # Attach HTML content
             html_part = MIMEText(html_content, 'html')
             message.attach(html_part)
-            
-            # Send email via SMTP
-            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
+
+            # Send email via SMTP (explicit timeout to avoid long hangs)
+            with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=15) as server:
                 server.ehlo()
                 server.starttls()
                 server.ehlo()
                 server.login(self.smtp_username, self.smtp_password)
                 server.send_message(message)
-            
-            print(f"Email sent successfully to {recipient_email}")
-            
+
+        try:
+            # Run SMTP in a thread so we don't block the FastAPI event loop.
+            await asyncio.to_thread(_send_sync)
+            print(f"✅ Email sent successfully to {recipient_email}")
         except smtplib.SMTPAuthenticationError:
             raise EmailSenderError(
                 "SMTP authentication failed. Please check your username and password."

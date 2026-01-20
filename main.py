@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from models import ReportRequest, ReportResponse, HealthResponse
 from services.metrics_calculator import MetricsCalculator
-from services.email_sender import EmailSender
+from services.email_sender import EmailSender, EmailSenderError
 from services.balancer_api import BalancerAPIError
 from services.telegram_sender import TelegramSender
 from config import settings
@@ -68,6 +68,38 @@ async def health_check():
         status="healthy",
         timestamp=datetime.utcnow()
     )
+
+
+@app.get("/test-smtp", tags=["Health"])
+async def test_smtp():
+    """Test SMTP connection and configuration."""
+    import smtplib
+    from config import settings
+    
+    try:
+        # Test SMTP connection
+        server = smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10)
+        server.set_debuglevel(0)
+        server.ehlo()
+        server.starttls()
+        server.ehlo()
+        server.login(settings.smtp_username, settings.smtp_password)
+        server.quit()
+        
+        return {
+            "status": "success",
+            "message": "SMTP connection successful",
+            "smtp_host": settings.smtp_host,
+            "smtp_port": settings.smtp_port,
+            "smtp_username": settings.smtp_username
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"SMTP connection failed: {str(e)}",
+            "smtp_host": settings.smtp_host if settings.smtp_host else "NOT SET",
+            "smtp_port": settings.smtp_port if settings.smtp_port else "NOT SET"
+        }
 
 
 @app.post("/telegram/webhook", tags=["Telegram"])
@@ -278,14 +310,20 @@ async def generate_report(request: ReportRequest, db: Session = Depends(get_db))
             
             # Send email
             print(f"📧 Sending comparison report to {request.recipient_email}...")
-            await email_sender.send_pool_report(
-                recipient_email=request.recipient_email,
-                pool_name=f"{len(multi_metrics.pools)} Pools",
-                metrics_data=metrics_data,
-                multi_pool=True
-            )
-            
-            print(f"✅ Comparison report sent successfully!")
+            if request.recipient_email and email_sender.enabled:
+                try:
+                    await email_sender.send_pool_report(
+                        recipient_email=request.recipient_email,
+                        pool_name=f"{len(multi_metrics.pools)} Pools",
+                        metrics_data=metrics_data,
+                        multi_pool=True
+                    )
+                    print("✅ Comparison email report sent successfully!")
+                except EmailSenderError as e:
+                    # Fail-open: continue to Telegram / response even if email fails.
+                    print(f"⚠️  Email sending failed (continuing without email): {str(e)}")
+            else:
+                print("ℹ️  Email disabled or recipient_email missing; skipping email.")
 
             # Also send Telegram card (secondary channel)
             # Use request-level telegram_chat_id if provided, otherwise use env variable
@@ -334,13 +372,20 @@ async def generate_report(request: ReportRequest, db: Session = Depends(get_db))
             metrics_data["timestamp"] = current_time
             
             # Send email
-            await email_sender.send_pool_report(
-                recipient_email=request.recipient_email,
-                pool_name=metrics.pool_name,
-                metrics_data=metrics_data,
-                multi_pool=False
-            )
-            print(f"✅ Email report sent successfully!")
+            if request.recipient_email and email_sender.enabled:
+                try:
+                    await email_sender.send_pool_report(
+                        recipient_email=request.recipient_email,
+                        pool_name=metrics.pool_name,
+                        metrics_data=metrics_data,
+                        multi_pool=False
+                    )
+                    print("✅ Email report sent successfully!")
+                except EmailSenderError as e:
+                    # Fail-open: continue to Telegram / response even if email fails.
+                    print(f"⚠️  Email sending failed (continuing without email): {str(e)}")
+            else:
+                print("ℹ️  Email disabled or recipient_email missing; skipping email.")
 
             # Optionally, also send Telegram card (secondary channel)
             # Use request-level telegram_chat_id if provided, otherwise use env variable

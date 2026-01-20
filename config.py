@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     smtp_username: str | None = None
     smtp_password: str | None = None
     from_email: str | None = None
+    enable_email: bool = True
     
     # Balancer API Configuration (only needed for FastAPI backend)
     balancer_v3_api: str = "https://api-v3.balancer.fi/"
