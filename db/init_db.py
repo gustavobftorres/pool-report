@@ -5,7 +5,7 @@ Creates all required tables in the PostgreSQL database.
 Run this once after setting up PostgreSQL:
     python init_db.py
 """
-from database import init_db, engine
+from db.database import init_db, engine
 from sqlalchemy import text
 
 def check_connection():
@@ -55,7 +55,7 @@ if __name__ == "__main__":
             """))
             tables = [row[0] for row in result]
             
-            if 'users' in tables and 'user_pools' in tables:
+            if 'allowed_users' in tables and 'clients' in tables and 'client_pools' in tables:
                 print("✅ All required tables exist:")
                 for table in tables:
                     print(f"   • {table}")
