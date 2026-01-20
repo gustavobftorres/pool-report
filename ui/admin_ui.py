@@ -2,8 +2,16 @@
 Streamlit Admin UI for Pool Report User Management.
 Run with: streamlit run admin_ui.py
 """
+import os
+import sys
 import streamlit as st
 import pandas as pd
+
+# Ensure project root is on sys.path when running from ui/
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 from database import SessionLocal, AllowedUser, Client, ClientPool
 
 st.set_page_config(page_title="Pool Report Admin", layout="wide")

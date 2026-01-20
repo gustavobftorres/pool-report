@@ -3,8 +3,16 @@ Database initialization script.
 Creates all required tables in the PostgreSQL database.
 
 Run this once after setting up PostgreSQL:
-    python init_db.py
+    python -m db.init_db
 """
+import os
+import sys
+
+# Ensure project root is on sys.path when running as a script
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 from db.database import init_db, engine
 from sqlalchemy import text
 
