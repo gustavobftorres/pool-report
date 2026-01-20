@@ -3,9 +3,17 @@ Database initialization script.
 Creates all required tables in the PostgreSQL database.
 
 Run this once after setting up PostgreSQL:
-    python init_db.py
+    python -m db.init_db
 """
-from database import init_db, engine
+import os
+import sys
+
+# Ensure project root is on sys.path when running as a script
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from db.database import init_db, engine
 from sqlalchemy import text
 
 def check_connection():
@@ -55,7 +63,7 @@ if __name__ == "__main__":
             """))
             tables = [row[0] for row in result]
             
-            if 'users' in tables and 'user_pools' in tables:
+            if 'allowed_users' in tables and 'clients' in tables and 'client_pools' in tables:
                 print("✅ All required tables exist:")
                 for table in tables:
                     print(f"   • {table}")
