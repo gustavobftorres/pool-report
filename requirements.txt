@@ -13,3 +13,4 @@ alembic>=1.13.1
 streamlit>=1.32.0
 pandas>=2.2.0
 openai>=1.0.0
+dune-client>=1.0.0
