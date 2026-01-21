@@ -1,52 +1,19 @@
 # Balancer Pool Performance Reporter
 
-A FastAPI-based web service that generates and emails performance reports for Balancer v2/v3 liquidity pools. The service queries Balancer's GraphQL APIs to fetch pool metrics, compares current performance with data from 15 days ago, and sends beautifully styled reports via email and Telegram with visual change indicators and adaptive precision formatting.
+A FastAPI-based Telegram bot that generates and sends performance reports for Balancer v2/v3 liquidity pools. The service queries Balancer's GraphQL APIs to fetch pool metrics, compares current performance with data from 15 days ago, and sends reports via Telegram with visual cards and markdown summaries. Supports multi-chain pools (Ethereum, Arbitrum, Plasma, etc.) and client-based pool management via Notion.
 
-## Metrics Tracked
+## Features
 
-### Core Metrics (All Pools)
-- **Pool Type**: Weighted, Stable, Boosted, etc.
-- **Swap Fee**: Trading fee percentage (up to 4 decimal precision for low-fee pools)
-- **TVL (Total Value Locked)**: Current vs 15 days ago with % change
-- **Volume**: Total swap volume over the last 15 days with % change from previous period
-- **Fees**: Total fees collected over the last 15 days with % change from previous period
-- **APR**: Current Annual Percentage Rate (calculated from fees if not available from API)
-
-### Pool-Type Specific Metrics
-- **Token Weights** (Weighted pools): Allocation percentages for each token
-- **Boosted APR** (Boosted pools): Yield from underlying yield-bearing tokens
-- **Rebalance Count** (Gyro/LVR pools): Number of rebalances in 15 days (when available)
-- **Surge Fees** (Stable Surge pools): Dynamic fee adjustments (when available)
+- **Telegram Bot Integration**: Request reports via Telegram commands
+- **Multi-Chain Support**: Automatically detects blockchain from Balancer URLs
+- **Client Management**: Manage clients and pools through Notion databases
+- **User Whitelist**: Control access via Notion whitelist database
+- **Performance Metrics**: TVL, volume, fees, APR comparisons over 15 days
+- **Multi-Pool Reports**: Compare multiple pools with rankings
 
 ## Installation
 
-### 1. Install PostgreSQL
-
-**On macOS:**
-```bash
-# Using Homebrew
-brew install postgresql@15
-brew services start postgresql@15
-
-# Create database
-createdb pool_report
-```
-
-**On Ubuntu/Debian:**
-```bash
-sudo apt update
-sudo apt install postgresql postgresql-contrib
-sudo systemctl start postgresql
-
-# Create database
-sudo -u postgres createdb pool_report
-```
-
-**On Windows:**
-- Download and install from https://www.postgresql.org/download/windows/
-- Use pgAdmin to create a database named `pool_report`
-
-### 2. Clone and Setup Python Environment
+### 1. Clone and Setup Python Environment
 
 Create a virtual environment with Python 3.11:
 
@@ -55,99 +22,82 @@ python3.11 -m venv venv
 source venv/bin/activate
 ```
 
-### 3. Install Python Dependencies
+### 2. Install Python Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Configure Environment Variables
+### 3. Configure Environment Variables
 
-Create a `.env` file in the project root:
-
-```bash
-touch .env
-```
-
-Edit `.env` with your configuration (see Configuration section below).
-
-### 5. Initialize Database
+Copy `.env.example` to `.env` and configure:
 
 ```bash
-python init_db.py
+cp .env.example .env
 ```
 
-This will create the required database tables (`users` and `user_pools`).
-
-## Configuration
-
-Edit the `.env` file with your settings:
+Edit `.env` with your settings:
 
 ```env
-# SMTP Configuration (use Gmail, Outlook, or custom SMTP)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USERNAME=your_email@gmail.com
-SMTP_PASSWORD=your_app_password
-FROM_EMAIL=your_email@gmail.com
+# Telegram Bot Configuration (Required)
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 
-# Balancer APIs
-BALANCER_V3_API=https://api-v3.balancer.fi/
-BALANCER_V2_SUBGRAPH=https://api.studio.thegraph.com/query/24617/balancer-v2
-BALANCER_GQL_ENDPOINT=https://gateway-arbitrum.network.thegraph.com/api/YOUR_API_KEY/subgraphs/id/YOUR_SUBGRAPH_ID
-DEFAULT_CHAIN=MAINNET          # For API queries (MAINNET, ARBITRUM, POLYGON, etc.)
-BLOCKCHAIN_NAME=ethereum       # For balancer.fi URLs (ethereum, arbitrum, polygon, etc.)
+# Notion API Configuration (Required)
+NOTION_API_KEY=your_notion_api_key_here
 
-# Telegram Integration (Optional)
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-TELEGRAM_CHAT_ID=your_default_chat_id    # Optional: Default chat ID for reports
-
-# Database Configuration
-DATABASE_URL=postgresql://user:password@localhost:5432/pool_report
+# SMTP Configuration (Optional - for email reports)
+# SMTP_HOST=smtp.gmail.com
+# SMTP_PORT=587
+# SMTP_USERNAME=your_email@gmail.com
+# SMTP_PASSWORD=your_app_password
+# FROM_EMAIL=your_email@gmail.com
+# ENABLE_EMAIL=true
 ```
 
-**Database URL Format:**
-```
-postgresql://username:password@host:port/database_name
-```
+## Notion Setup
 
-**Multi-Chain Support:**
-- `DEFAULT_CHAIN`: Used for GraphQL API queries (e.g., `MAINNET`, `ARBITRUM`, `POLYGON`)
-- `BLOCKCHAIN_NAME`: Used for generating balancer.fi URLs (e.g., `ethereum`, `arbitrum`, `polygon`)
-- Both should represent the same network, just in different formats
+The application uses two Notion databases:
 
-### Gmail SMTP Setup (Optional)
+### 1. Pools Database
+Create a Notion database with:
+- **ID** (unique_id field)
+- **Name** (title field) - Client name (e.g., "aave", "yuzu")
+- **Pool addresses** (rollup/url field) - Balancer.fi URLs (e.g., `https://balancer.fi/pools/ethereum/v3/0x...`)
 
-If using Gmail, you'll need to:
-1. Enable 2-factor authentication
-2. Generate an "App Password" at https://myaccount.google.com/apppasswords
-3. Use the app password in the `.env` file
+Update `POOLS_DATABASE_ID` in `services/notion.py` with your database ID.
 
-### Telegram Bot Setup 
+### 2. Whitelist Database
+Create a Notion database with:
+- **username** (text field)
+- **user_id** (number field) - Telegram user ID
 
-The application includes a scalable Telegram integration that allows users to receive reports without editing environment variables.
+Update `WHITELIST_DATABASE_ID` in `services/notion.py` with your database ID.
 
-#### 1. Create Your Bot
+### Getting Notion Database IDs
+1. Open your Notion database in a browser
+2. The URL format is: `https://www.notion.so/{database_id}?v=...`
+3. Copy the `database_id` (32 characters, with hyphens)
+
+### Getting Notion API Key
+1. Go to https://www.notion.so/my-integrations
+2. Create a new integration
+3. Copy the "Internal Integration Token"
+4. Share your databases with the integration (click "..." → "Add connections")
+
+## Telegram Bot Setup
+
+### 1. Create Your Bot
 
 1. Open Telegram and message [@BotFather](https://t.me/BotFather)
 2. Send `/newbot` and follow the prompts
-3. Copy the bot token provided by BotFather
-4. Add the token to your `.env` file as `TELEGRAM_BOT_TOKEN`
+3. Copy the bot token and add it to `.env` as `TELEGRAM_BOT_TOKEN`
 
-#### 2. Configure Webhook
+### 2. Configure Webhook
 
-Once your FastAPI server is running and accessible (either locally with ngrok or deployed):
+Once your FastAPI server is running:
 
-**Option A: Using the API endpoint**
 ```bash
 curl -X POST "http://localhost:8000/telegram/setup-webhook?webhook_url=https://your-domain.com/telegram/webhook"
-```
-
-**Option B: Direct Telegram API**
-```bash
-curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://your-domain.com/telegram/webhook"}'
 ```
 
 **For local development with ngrok:**
@@ -159,82 +109,35 @@ ngrok http 8000
 curl -X POST "http://localhost:8000/telegram/setup-webhook?webhook_url=https://your-ngrok-url.ngrok.io/telegram/webhook"
 ```
 
-#### 3. Get Your Chat ID
+### 3. Whitelist Users
 
-Each user who wants to receive reports should:
-
-1. Open Telegram and search for your bot
-2. Send `/start` to the bot
-3. The bot will reply with their Telegram Chat ID
-4. Users include this chat ID in their API requests
-
-**Example Bot Response:**
-```
-✅ Your Telegram Chat ID: 123456789
-
-📋 Use this ID in your API requests to receive pool reports.
-
-Example:
-{
-  "pool_addresses": ["0x..."],
-  "recipient_email": "you@example.com",
-  "telegram_chat_id": "123456789"
-}
-```
-
-#### 4. Using Telegram Chat IDs in API Requests
-
-Users can pass their chat ID directly in the POST request:
-
-```json
-{
-  "pool_addresses": ["0x3de27efa2f1aa663ae5d458857e731c129069f29"],
-  "recipient_email": "user@example.com",
-  "telegram_chat_id": "123456789"
-}
-```
-
-**Fallback Behavior:**
-- If `telegram_chat_id` is provided in the request, reports go to that chat
-- If not provided, reports go to the `TELEGRAM_CHAT_ID` from `.env` (if configured)
-- If neither is configured, Telegram sending is skipped (email still works)
+Add users to your Notion whitelist database with their Telegram `user_id` (users can get this by sending `/myid` to the bot).
 
 ## Usage
 
-### Start the Services
+### Start the Server
 
-You'll need to run two services:
-
-**1. FastAPI Server (main application):**
 ```bash
 uvicorn main:app --reload
 ```
 
 The API will be available at `http://localhost:8000`
 
-**2. Admin UI (user management dashboard):**
-```bash
-# In a separate terminal
-streamlit run admin_ui.py
-```
-
-The admin UI will be available at `http://localhost:8501`
-
 ### API Documentation
 
 FastAPI provides automatic interactive documentation:
-
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
-- **Admin Dashboard**: http://localhost:8501
 
-### Generate a Single Pool Report
+### Telegram Bot Commands
 
-Send a POST request to `/report` with one pool.
+- `/start` - Get your Telegram user ID and welcome message
+- `/myid` - Get your Telegram user ID
+- `{client_name}` - Request a report for a client (e.g., `aave`, `yuzu`)
 
-For single-pool requests, the service:
-- Sends an HTML email report to the configured `recipient_email`
-- Sends a Telegram image card + markdown summary to the specified chat ID (if provided) or default chat ID
+### REST API Endpoint
+
+You can also generate reports via REST API:
 
 ```bash
 curl -X POST "http://localhost:8000/report" \
@@ -246,110 +149,39 @@ curl -X POST "http://localhost:8000/report" \
   }'
 ```
 
-**Note:** `telegram_chat_id` is optional. If omitted, the default `TELEGRAM_CHAT_ID` from `.env` is used (if configured).
-
-### Send Reports to Users (Admin-Controlled)
-
-**Recommended workflow:** Admins send reports to users via the Streamlit UI.
-
-### Generate a Multi-Pool Comparison Report
-
-Send a POST request with multiple pools.
-
-For multi-pool requests, the service:
-- Sends an HTML summary email report to the configured `recipient_email`
-- Sends a Telegram image card + markdown summary to the specified chat ID (if provided) or default chat ID
-
-```bash
-curl -X POST "http://localhost:8000/report" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "pool_addresses": [
-      "0x3de27efa2f1aa663ae5d458857e731c129069f29",
-      "0x5c6ee304399dbdb9c8ef030ab642b10820db8f56",
-      "0x96646936b91d6b9d7d0c47c496afbf3d6ec7b6f8"
-    ],
-    "recipient_email": "your.email@example.com",
-    "telegram_chat_id": "123456789"
-  }'
-```
-
-**Multi-Pool Report Includes:**
-- 🏆 Top 3 pools by Trading Volume (with % of total portfolio volume)
-- 💎 Top 3 pools by TVL Growth (absolute increase + % change from 15 days ago)
-- 💰 Total Fees collected (all pools combined)
-- 🚀 Weighted Average APR (by TVL)
-
-### Multi-Pool with Custom Rankings
-
-Add custom rankings to your multi-pool reports:
-
-```bash
-curl -X POST "http://localhost:8000/report" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "pool_addresses": [
-      "0x3de27efa2f1aa663ae5d458857e731c129069f29",
-      "0x5c6ee304399dbdb9c8ef030ab642b10820db8f56"
-    ],
-    "recipient_email": "your.email@example.com",
-    "ranking_by": ["swap_fee", "boosted_apr"]
-  }'
-```
-
-**Available Ranking Metrics:**
-- `volume` - Top pools by trading volume (default)
-- `tvl_growth` - Top pools by TVL increase (default)
-- `swap_fee` - Top pools by swap fee percentage
-- `boosted_apr` - Top pools by boosted APR (Boosted pools only)
-- `rebalance_count` - Top pools by rebalance activity (when available)
-
-Or use the interactive Swagger UI at `/docs` to test the endpoint.
-
-## User Management System
-
-### Admin Dashboard
-
-Access the Streamlit admin UI at `http://localhost:8501` to manage users and their pool assignments.
-
-### Bot Commands
-
-- `/start` - Register and get your user ID
-- `/myid` - Get your user ID and see how many pools are assigned
-- 
-**Optional Fields:**
-- `telegram_chat_id` (string): Telegram chat ID to send report to (overrides env variable)
-- `ranking_by` (array): Metrics to rank by in multi-pool reports (default: `["volume", "tvl_growth"]`)
-
 ## Project Structure
 
 ```
 pool-report/
-├── main.py                        # FastAPI application entry point
+├── main.py                        # FastAPI application and Telegram webhook
 ├── config.py                      # Pydantic settings configuration
 ├── models.py                      # Pydantic request/response models
-├── database.py                    # SQLAlchemy database models and session
-├── init_db.py                     # Database initialization script
-├── admin_ui.py                    # Streamlit admin dashboard
+├── database.py                    # Compatibility shim
+├── db/
+│   └── notion_adapter.py         # Notion adapter (SQLAlchemy-compatible)
 ├── services/
-│   ├── balancer_api.py            # GraphQL queries to Balancer APIs
+│   ├── balancer_api.py            # Balancer API queries (multi-chain)
 │   ├── metrics_calculator.py      # Metrics comparison logic
 │   ├── email_sender.py            # SMTP email sending
-│   └── telegram_sender.py         # Telegram card generation and sending
+│   ├── telegram_sender.py         # Telegram card generation
+│   └── notion.py                  # Notion API integration
 ├── templates/
 │   ├── email_report.html          # Single pool email template
-│   ├── email_report_multi.html    # Multi-pool comparison email template
-│   ├── telegram_card.html         # Single pool Telegram card template
-│   └── telegram_card_multi.html   # Multi-pool Telegram card template
+│   ├── email_report_multi.html    # Multi-pool email template
+│   ├── telegram_card.html         # Single pool Telegram card
+│   └── telegram_card_multi.html   # Multi-pool Telegram card
 ├── requirements.txt               # Python dependencies
-├── .env                           # Environment variables (create this)
+├── .env.example                   # Environment variables template
 └── README.md                      # This file
 ```
 
-## Deployment
+## Multi-Chain Support
 
-See **[DEPLOYMENT.md](DEPLOYMENT.md)** for comprehensive deployment instructions.
+Pool URLs are automatically parsed to extract blockchain information:
+- Format: `https://balancer.fi/pools/{blockchain}/{version}/{address}`
+- Supported chains: Ethereum, Arbitrum, Polygon, Base, Plasma, and more
+- The system automatically queries the correct chain API based on the URL
 
-## Support
+## License
 
-For issues or questions, please open an issue on the repository.
+MIT
