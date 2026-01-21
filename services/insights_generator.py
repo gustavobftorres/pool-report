@@ -61,9 +61,6 @@ class InsightsGenerator:
         # DEX benchmarking
         self.dex_benchmarker = DEXBenchmarker()
     
-    # ------------------------------------------------------------------
-    # PUBLIC API (used by Telegram sender)
-    # ------------------------------------------------------------------
     async def generate_single_pool_insights(
         self,
         metrics: PoolMetrics,
@@ -160,9 +157,7 @@ class InsightsGenerator:
         selected_bullets = self._select_portfolio_highlights(pool_bullets_struct, max_bullets=max_bullets)
         return self._format_bullets(selected_bullets)
     
-    # ------------------------------------------------------------------
-    # Orchestrator + specialists
-    # ------------------------------------------------------------------
+
     def _normalize_pool_type(self, pool_data: Dict[str, Any]) -> str:
         """Map raw pool type into one of our canonical categories."""
         raw_type = (pool_data.get("type") or pool_data.get("poolType") or "").upper()
@@ -308,9 +303,7 @@ class InsightsGenerator:
                 bullets.append(text)
         return bullets
     
-    # ------------------------------------------------------------------
-    # Selection-only summarizer for multi-pool insights
-    # ------------------------------------------------------------------
+
     def _select_portfolio_highlights(self, pool_bullets_struct: List[Dict[str, Any]], max_bullets: int = 6) -> List[str]:
         """
         Select a subset of bullets across pools without editing them.
@@ -338,9 +331,7 @@ class InsightsGenerator:
         
         return selected
     
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
+
     async def _fetch_competitor_context(self, pool_data: dict) -> Dict[str, Any]:
         """Best-effort fetch of competitor benchmarks for a single pool."""
         try:

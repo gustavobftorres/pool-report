@@ -60,6 +60,4 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
-
-# Global settings instance
 settings = Settings()

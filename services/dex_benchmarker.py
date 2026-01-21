@@ -97,7 +97,6 @@ class DEXBenchmarker:
         Returns raw pool list (dicts).
         """
         url = f"{self.base_url}/networks/{network}/tokens/{token}/pools"
-        # Visible runtime logging (stdout) so it's easy to confirm we are calling GeckoTerminal
         print(f"🦎 GeckoTerminal GET {url}?page=1")
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.get(url, params={"page": 1})

@@ -14,7 +14,6 @@ class TelegramSender:
         self.base_url = f"https://api.telegram.org/bot{self.bot_token}"
         self.api_url = f"{self.base_url}/sendPhoto"
         
-        # Try to configure the screenshot tool (might not be available in some environments)
         try:
             # Check if we're on Render or similar environment with Chromium installed
             chromium_path = self._find_chromium()

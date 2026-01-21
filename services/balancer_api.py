@@ -90,7 +90,7 @@ class BalancerAPI:
             except Exception as e:
                 print(f"⚠️  V2 query error for {pool_address}: {str(e)}")
         
-        # Try V3 API format
+        #V3 API format
         try:
             query = """
             query GetPool($id: String!, $chain: GqlChain!) {
@@ -196,12 +196,12 @@ class BalancerAPI:
             "name": v2_pool.get("name") or f"Pool {v2_pool.get('poolType', 'Unknown')}",
             "type": v2_pool.get("poolType", "Unknown"),
             "version": 2,
-            "swapFee": v2_pool.get("swapFee", "0"),  # Add swap fee from V2 pool
-            "_api_version": "v2",  # Add metadata for URL generation
-            "_blockchain": self.blockchain_name,  # Blockchain name for balancer.fi URLs
+            "swapFee": v2_pool.get("swapFee", "0"),
+            "_api_version": "v2", 
+            "_blockchain": self.blockchain_name,
             "dynamicData": {
                 "totalLiquidity": v2_pool.get("totalLiquidity", "0"),
-                "volume24h": "0",  # Not available in single query
+                "volume24h": "0",
                 "fees24h": "0",
                 "aprItems": []
             },
@@ -210,7 +210,7 @@ class BalancerAPI:
                     "address": token.get("address"),
                     "symbol": token.get("symbol"),
                     "name": token.get("name", token.get("symbol")),
-                    "weight": token.get("weight")  # Include weight for weighted pools
+                    "weight": token.get("weight")
                 }
                 for token in v2_pool.get("tokens", [])
             ]
