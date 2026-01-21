@@ -382,13 +382,11 @@ async def generate_report(request: ReportRequest):
                 print("ℹ️  Email disabled or recipient_email missing; skipping email.")
 
             # Also send Telegram card (secondary channel)
-            # Use request-level telegram_chat_id if provided, otherwise use env variable
-            telegram_chat_id = request.telegram_chat_id or settings.telegram_chat_id
-            if telegram_chat_id:
-                print(f"✈️ Sending Telegram multi-pool Card to Chat ID: {telegram_chat_id}...")
+            if request.telegram_chat_id:
+                print(f"✈️ Sending Telegram multi-pool Card to Chat ID: {request.telegram_chat_id}...")
                 await telegram_sender.send_multi_pool_report(
                     metrics_data=metrics_data,
-                    chat_id=telegram_chat_id
+                    chat_id=request.telegram_chat_id
                 )
                 print("✅ Telegram multi-pool report sent successfully!")
             
@@ -444,14 +442,12 @@ async def generate_report(request: ReportRequest):
                 print("ℹ️  Email disabled or recipient_email missing; skipping email.")
 
             # Optionally, also send Telegram card (secondary channel)
-            # Use request-level telegram_chat_id if provided, otherwise use env variable
-            telegram_chat_id = request.telegram_chat_id or settings.telegram_chat_id
-            if telegram_chat_id:
-                print(f"✈️ Sending Telegram Card to Chat ID: {telegram_chat_id}...")
+            if request.telegram_chat_id:
+                print(f"✈️ Sending Telegram Card to Chat ID: {request.telegram_chat_id}...")
                 await telegram_sender.send_pool_report(
                     pool_data=pool_data,
                     metrics_data=metrics_data,
-                    chat_id=telegram_chat_id
+                    chat_id=request.telegram_chat_id
                 )
                 print(f"✅ Telegram report sent successfully!")
             

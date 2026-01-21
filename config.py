@@ -27,7 +27,6 @@ class Settings(BaseSettings):
 
     # Telegram Config (only needed for FastAPI backend)
     telegram_bot_token: str | None = None
-    telegram_chat_id: str | None = None  # Optional: fallback chat ID
     
     # Notion API Configuration
     notion_api_key: str | None = None

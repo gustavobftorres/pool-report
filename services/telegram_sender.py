@@ -7,7 +7,6 @@ from config import settings
 class TelegramSender:
     def __init__(self):
         self.bot_token = settings.telegram_bot_token
-        self.chat_id = settings.telegram_chat_id
         self.base_url = f"https://api.telegram.org/bot{self.bot_token}"
         self.api_url = f"{self.base_url}/sendPhoto"
         
@@ -78,7 +77,7 @@ class TelegramSender:
             
             return response
 
-    async def send_pool_report(self, pool_data: dict, metrics_data: dict, chat_id: str | None = None):
+    async def send_pool_report(self, pool_data: dict, metrics_data: dict, chat_id: str):
         """
         Generates an image card and sends it to Telegram with Markdown text.
         Falls back to text-only if image generation is not available.
@@ -86,11 +85,10 @@ class TelegramSender:
         Args:
             pool_data: Pool information dictionary
             metrics_data: Formatted metrics dictionary
-            chat_id: Optional chat ID to send to (defaults to env variable)
+            chat_id: Chat ID to send to (required)
         """
         try:
-            # Use provided chat_id or fall back to default
-            target_chat_id = chat_id or self.chat_id
+            target_chat_id = chat_id
             
             # If image generation is not available, send text-only message
             if not self.image_support:
@@ -154,7 +152,7 @@ class TelegramSender:
         except Exception as e:
             print(f"❌ Error in TelegramSender: {str(e)}")
 
-    async def send_multi_pool_report(self, metrics_data: dict, chat_id: str | None = None):
+    async def send_multi_pool_report(self, metrics_data: dict, chat_id: str):
         """
         Generates a multi-pool comparison image card and sends it to Telegram with Markdown text.
         Falls back to text-only if image generation is not available.
@@ -162,11 +160,10 @@ class TelegramSender:
         
         Args:
             metrics_data: Formatted multi-pool metrics dictionary
-            chat_id: Optional chat ID to send to (defaults to env variable)
+            chat_id: Chat ID to send to (required)
         """
         try:
-            # Use provided chat_id or fall back to default
-            target_chat_id = chat_id or self.chat_id
+            target_chat_id = chat_id
             
             # If image generation is not available, send text-only message
             if not self.image_support:
