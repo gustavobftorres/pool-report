@@ -8,7 +8,6 @@ from datetime import datetime
 from contextlib import asynccontextmanager
 import httpx
 import asyncio
-from sqlalchemy.orm import Session
 
 from models import ReportRequest, ReportResponse, HealthResponse
 from services.metrics_calculator import MetricsCalculator
@@ -16,7 +15,7 @@ from services.email_sender import EmailSender, EmailSenderError
 from services.balancer_api import BalancerAPIError
 from services.telegram_sender import TelegramSender
 from config import settings
-from database import get_db, AllowedUser, Client, ClientPool
+from db.notion_adapter import get_notion_db, NotionAllowedUser, NotionClient, NotionClientPool
 
 
 # Lifespan context manager for startup/shutdown events
@@ -104,7 +103,7 @@ async def test_smtp():
 
 
 @app.post("/telegram/webhook", tags=["Telegram"])
-async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
+async def telegram_webhook(request: Request, db = Depends(get_notion_db)):
     """
     Webhook endpoint for Telegram bot updates.
     New behavior:
@@ -132,25 +131,42 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
             def _normalize_client_key(raw: str) -> str:
                 return (raw or "").strip().lower()
 
-            async def _send_client_report(target_chat_id: str, client_key: str, pool_addresses: list[str]) -> None:
+            async def _send_client_report(target_chat_id: str, client_key: str, pools: list) -> None:
                 """
                 Background task: generate report metrics and send to Telegram.
+                
+                Args:
+                    pools: List of NotionClientPool objects with blockchain, version, and address info
                 """
                 try:
+                    # Send generating message once before processing pools
+                    await telegram_sender.send_message(str(target_chat_id), f"🔄 Generating report for `{client_key}`...")
+                    
                     calculator = MetricsCalculator()
 
                     # Decide single vs multi
-                    if len(pool_addresses) == 1:
-                        pool_address = pool_addresses[0]
-                        metrics = await calculator.calculate_pool_metrics(pool_address)
-                        pool_data = await calculator.api.get_current_pool_data(pool_address)
+                    if len(pools) == 1:
+                        pool_obj = pools[0]
+                        pool_address = pool_obj.pool_address
+                        blockchain = pool_obj.blockchain
+                        version = pool_obj.version
+                        
+                        metrics = await calculator.calculate_pool_metrics(pool_address, blockchain=blockchain)
+                        pool_data = await calculator.api.get_current_pool_data(pool_address, blockchain=blockchain)
+                        
+                        # Override blockchain/version from pool object if available
+                        if blockchain:
+                            pool_data["_blockchain"] = blockchain
+                        if version:
+                            pool_data["_api_version"] = version
+                        
                         metrics_data = calculator.format_metrics_for_email(metrics, pool_data)
 
                         # Add fields used by Telegram templates/caption
                         pool_id = pool_data.get("id", pool_address)
-                        blockchain = pool_data.get("_blockchain", "ethereum")
-                        version = pool_data.get("_api_version", "v2")
-                        pool_url_link = f"https://balancer.fi/pools/{blockchain}/{version}/{pool_id}"
+                        blockchain_final = pool_data.get("_blockchain", blockchain or "ethereum")
+                        version_final = pool_data.get("_api_version", version or "v2")
+                        pool_url_link = pool_obj.url or f"https://balancer.fi/pools/{blockchain_final}/{version_final}/{pool_id}"
                         current_time = datetime.utcnow().strftime("%B %d, %Y at %H:%M UTC")
 
                         metrics_data["pool_id"] = pool_id
@@ -163,6 +179,8 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
                             chat_id=str(target_chat_id),
                         )
                     else:
+                        # Multi-pool: extract addresses for now (API may need updating for multi-chain)
+                        pool_addresses = [p.pool_address for p in pools]
                         ranking_by = ["volume", "tvl_growth", "swap_fee"]
                         multi_metrics = await calculator.calculate_multi_pool_metrics(pool_addresses, ranking_by=ranking_by)
                         metrics_data = calculator.format_multi_pool_metrics_for_email(multi_metrics)
@@ -199,7 +217,7 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
                 return {"ok": True}
 
             # Enforce whitelist
-            allowed = db.query(AllowedUser).filter(AllowedUser.user_id == user_id).first()
+            allowed = db.query(NotionAllowedUser).filter(NotionAllowedUser.user_id == user_id).first()
             if not allowed:
                 response_text = (
                     "⛔ You are not authorized to use this bot.\n\n"
@@ -209,17 +227,13 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
                 await telegram_sender.send_message(str(chat_id), response_text)
                 return {"ok": True}
 
-            # Update allowed user metadata
-            allowed.last_seen = datetime.utcnow()
-            allowed.username = username
-            allowed.first_name = first_name
-            allowed.last_name = last_name
-            db.commit()
+            # Note: User metadata updates removed (read-only Notion mode)
 
             # Lookup client pools
-            client = db.query(Client).filter(Client.client_key == client_key).first()
+            client = db.query(NotionClient).filter(NotionClient.client_key == client_key).first()
             if not client:
-                all_clients = [c.client_key for c in db.query(Client).order_by(Client.client_key.asc()).all()]
+                all_clients = [c.client_key for c in db.query(NotionClient).all()]
+                all_clients.sort()  # Sort alphabetically
                 listing = "\n".join([f"- `{ck}`" for ck in all_clients]) if all_clients else "_(no clients configured yet)_"
                 response_text = (
                     f"❓ Unknown client: `{client_key}`\n\n"
@@ -229,14 +243,12 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
                 await telegram_sender.send_message(str(chat_id), response_text)
                 return {"ok": True}
 
-            pool_addresses = [cp.pool_address for cp in client.pools]
-            if not pool_addresses:
+            if not client.pools:
                 response_text = f"⚠️ Client `{client_key}` has no pools assigned."
                 await telegram_sender.send_message(str(chat_id), response_text)
                 return {"ok": True}
 
-            await telegram_sender.send_message(str(chat_id), f"🔄 Generating report for `{client_key}`...")
-            asyncio.create_task(_send_client_report(str(chat_id), client_key, pool_addresses))
+            asyncio.create_task(_send_client_report(str(chat_id), client_key, client.pools))
         
         return {"ok": True}
     
@@ -295,7 +307,7 @@ async def setup_telegram_webhook(webhook_url: str):
     2. User lookup: Provide user_id to automatically use assigned pools
     """
 )
-async def generate_report(request: ReportRequest, db: Session = Depends(get_db)):
+async def generate_report(request: ReportRequest):
     """
     Generate and send a pool performance report via Email.
     - Single pool: Email report (and Telegram card as an extra channel)
@@ -303,7 +315,6 @@ async def generate_report(request: ReportRequest, db: Session = Depends(get_db))
     
     Args:
         request: ReportRequest containing either pool_addresses or user_id
-        db: Database session (injected)
         
     Returns:
         ReportResponse with status, timestamp, and pool information

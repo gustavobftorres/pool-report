@@ -67,28 +67,70 @@ class BalancerAPI:
             except Exception as e:
                 raise BalancerAPIError(f"Error querying Balancer API: {str(e)}")
     
-    async def get_current_pool_data(self, pool_address: str) -> Dict[str, Any]:
+    def _blockchain_name_to_api_chain(self, blockchain_name: str) -> str:
+        """
+        Convert blockchain name from URL format to API chain code.
+        
+        Examples:
+            ethereum -> MAINNET
+            arbitrum -> ARBITRUM
+            polygon -> POLYGON
+            base -> BASE
+            plasma -> PLASMA
+        """
+        mapping = {
+            "ethereum": "MAINNET",
+            "arbitrum": "ARBITRUM",
+            "polygon": "POLYGON",
+            "base": "BASE",
+            "gnosis": "GNOSIS",
+            "optimism": "OPTIMISM",
+            "avalanche": "AVALANCHE",
+            "zkevm": "ZKEVM",
+            "mode": "MODE",
+            "fraxtal": "FRAXTAL",
+            "plasma": "PLASMA",
+        }
+        return mapping.get(blockchain_name.lower(), blockchain_name.upper())
+    
+    async def get_current_pool_data(self, pool_address: str, blockchain: str | None = None) -> Dict[str, Any]:
         """
         Get current pool data from Balancer GraphQL endpoint.
         Supports both V2 (via subgraph) and V3 (via API) automatically.
         
         Args:
             pool_address: Ethereum address of the pool (42 chars)
+            blockchain: Optional blockchain name (e.g., "ethereum", "arbitrum", "plasma")
+                       If not provided, uses default from settings
             
         Returns:
             Dictionary containing pool data
         """
-        if self.gql_endpoint:
+        # Determine which chain to use
+        if blockchain:
+            api_chain = self._blockchain_name_to_api_chain(blockchain)
+            blockchain_name = blockchain.lower()
+        else:
+            api_chain = self.chain
+            blockchain_name = self.blockchain_name
+        
+        print(f"🔍 Querying pool {pool_address} on chain: {api_chain} ({blockchain_name})")
+        
+        # Note: V2 subgraph is typically Ethereum-only, so skip if querying other chains
+        if self.gql_endpoint and (not blockchain or blockchain.lower() == "ethereum"):
             print(f"🔍 Querying V2 subgraph by address: {pool_address}")
             try:
                 pool = await self._get_v2_pool_by_address(pool_address)
                 if pool:
                     print(f"✅ Found V2 pool: {pool.get('name', pool.get('id'))}")
+                    pool['_blockchain'] = blockchain_name
                     return pool
                 else:
                     print(f"⚠️  Pool not found in V2 subgraph for address: {pool_address}")
             except Exception as e:
                 print(f"⚠️  V2 query error for {pool_address}: {str(e)}")
+        elif blockchain and blockchain.lower() != "ethereum":
+            print(f"⏭️  Skipping V2 subgraph (only supports Ethereum, querying {blockchain})")
         
         # Try V3 API format
         try:
@@ -124,7 +166,7 @@ class BalancerAPI:
             
             variables = {
                 "id": pool_address.lower(),
-                "chain": self.chain
+                "chain": api_chain
             }
             
             data = await self._execute_query(self.v3_api_url, query, variables)
@@ -134,13 +176,13 @@ class BalancerAPI:
                 print(f"✅ Found V3 pool: {pool.get('name')}")
                 # Add metadata for URL generation
                 pool['_api_version'] = 'v3'
-                pool['_blockchain'] = self.blockchain_name
+                pool['_blockchain'] = blockchain_name
                 return pool
         except Exception as e:
             print(f"⚠️  V3 API failed: {str(e)}")
         
         raise BalancerAPIError(
-            f"Pool not found: {pool_address}. "
+            f"Pool not found: {pool_address} on chain {api_chain}. "
             f"Tried both V2 subgraph and V3 API."
         )
     
@@ -219,7 +261,8 @@ class BalancerAPI:
     async def get_v3_pool_snapshots(
         self,
         pool_address: str,
-        days_back: int = 30
+        days_back: int = 30,
+        blockchain: str | None = None
     ) -> List[Dict[str, Any]]:
         """
         Get historical pool snapshots from Balancer V3 API.
@@ -235,6 +278,12 @@ class BalancerAPI:
         end_timestamp = int(datetime.utcnow().timestamp())
         start_timestamp = int((datetime.utcnow() - timedelta(days=days_back)).timestamp())
         
+        # Determine which chain to use
+        if blockchain:
+            api_chain = self._blockchain_name_to_api_chain(blockchain)
+        else:
+            api_chain = self.chain
+        
         query = """
         query GetPoolSnapshots($id: String!, $chain: GqlChain!, $range: GqlPoolSnapshotDataRange!) {
           poolGetSnapshots(id: $id, chain: $chain, range: $range) {
@@ -247,15 +296,21 @@ class BalancerAPI:
         }
         """
         
+        # Determine which chain to use
+        if blockchain:
+            api_chain = self._blockchain_name_to_api_chain(blockchain)
+        else:
+            api_chain = self.chain
+        
         variables = {
             "id": pool_address.lower(),
-            "chain": self.chain,
+            "chain": api_chain,
             "range": "THIRTY_DAYS"
         }
         
         try:
             print(f"   Attempting V3 snapshot query with range: THIRTY_DAYS")
-            print(f"   Query variables: id={pool_address.lower()}, chain={self.chain}")
+            print(f"   Query variables: id={pool_address.lower()}, chain={api_chain}")
             data = await self._execute_query(self.v3_api_url, query, variables)
             snapshots = data.get("poolGetSnapshots", [])
             
@@ -302,7 +357,8 @@ class BalancerAPI:
         self,
         pool_address: str,
         days_back: int = 30,
-        pool_version: str | None = None
+        pool_version: str | None = None,
+        blockchain: str | None = None
     ) -> List[Dict[str, Any]]:
         """
         Get historical pool snapshots from Balancer API (V2 or V3).
@@ -311,13 +367,14 @@ class BalancerAPI:
             pool_address: Pool address or full pool ID
             days_back: Number of days of historical data to fetch
             pool_version: Pool version ("v2" or "v3"), auto-detected if None
+            blockchain: Optional blockchain name (e.g., "ethereum", "arbitrum", "plasma")
             
         Returns:
             List of pool snapshots with timestamp, liquidity, volume, and fees
         """
         if pool_version == "v3":
             print(f"🔍 Fetching V3 snapshots for {pool_address}")
-            return await self.get_v3_pool_snapshots(pool_address, days_back)
+            return await self.get_v3_pool_snapshots(pool_address, days_back, blockchain=blockchain)
         
 
         pool_id = pool_address
@@ -427,7 +484,8 @@ class BalancerAPI:
         self,
         pool_address: str,
         target_timestamp: int,
-        pool_version: str | None = None
+        pool_version: str | None = None,
+        blockchain: str | None = None
     ) -> Dict[str, Any] | None:
         """
         Get the pool snapshot closest to a specific timestamp.
@@ -436,6 +494,7 @@ class BalancerAPI:
             pool_address: Ethereum address of the pool
             target_timestamp: Target Unix timestamp
             pool_version: Pool version ("v2" or "v3"), auto-detected if None
+            blockchain: Optional blockchain name (e.g., "ethereum", "arbitrum", "plasma")
             
         Returns:
             Pool snapshot data or None if not found
@@ -445,7 +504,8 @@ class BalancerAPI:
         snapshots = await self.get_pool_snapshots(
             pool_address, 
             days_back=5,
-            pool_version=pool_version
+            pool_version=pool_version,
+            blockchain=blockchain
         )
         
         if not snapshots:
