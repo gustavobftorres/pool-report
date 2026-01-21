@@ -6,12 +6,15 @@ Multi-agent insights generator:
 """
 import asyncio
 import os
+import logging
 from typing import Optional, List, Dict, Any
 
 from openai import AsyncOpenAI
 
 from config import settings
 from models import PoolMetrics, MultiPoolMetrics
+from services.dex_benchmarker import DEXBenchmarker
+logger = logging.getLogger(__name__)
 
 
 POOL_TYPE_STABLE = "stable"
@@ -54,6 +57,9 @@ class InsightsGenerator:
         self.enable_live_docs = settings.enable_insights_live_docs
         self.docs_base_urls = settings.insights_docs_base_urls or []
         self.max_doc_chars = settings.insights_max_doc_chars
+
+        # DEX benchmarking
+        self.dex_benchmarker = DEXBenchmarker()
     
     # ------------------------------------------------------------------
     # PUBLIC API (used by Telegram sender)
@@ -76,11 +82,15 @@ class InsightsGenerator:
         if not self.enabled or not self.client:
             return ""
         
+        # Fetch competitor benchmarks (best-effort)
+        competitor_data = await self._fetch_competitor_context(pool_data)
+
         pool_type_key = self._normalize_pool_type(pool_data)
         bullets = await self._run_specialist_for_pool(
             pool_type_key=pool_type_key,
             metrics=metrics,
             pool_data=pool_data,
+            competitor_data=competitor_data,
         )
         # Limit bullets
         bullets = bullets[:max_bullets]
@@ -115,14 +125,18 @@ class InsightsGenerator:
                 "pool_data": pool_info,
             })
         
+        # Fetch competitor benchmarks per pool (best-effort), concurrently
+        competitor_results = await self._fetch_competitors_for_pools(pool_items)
+
         # Run specialists per pool concurrently
         tasks = [
             self._run_specialist_for_pool(
                 pool_type_key=self._normalize_pool_type(item["pool_data"]),
                 metrics=item["metrics"],
                 pool_data=item["pool_data"],
+                competitor_data=competitor_results.get(idx, {}),
             )
-            for item in pool_items
+            for idx, item in enumerate(pool_items)
         ]
         
         try:
@@ -175,6 +189,7 @@ class InsightsGenerator:
         pool_type_key: str,
         metrics: PoolMetrics,
         pool_data: Dict[str, Any],
+        competitor_data: Optional[Dict[str, Any]] = None,
     ) -> List[str]:
         """
         Orchestrator + specialist for a single pool.
@@ -202,6 +217,7 @@ class InsightsGenerator:
             pool_type_key=specialist_name,
             docs_snippet=prompt_docs,
             metrics_text=prompt_context,
+            competitor_data=competitor_data or {},
         )
     
     async def _call_specialist_model(
@@ -209,6 +225,7 @@ class InsightsGenerator:
         pool_type_key: str,
         docs_snippet: str,
         metrics_text: str,
+        competitor_data: Dict[str, Any],
     ) -> List[str]:
         """Call the specialist model for a given pool type."""
         if not self.enabled or not self.client:
@@ -222,12 +239,34 @@ class InsightsGenerator:
             "Return only plain text bullet points, one per line, without markdown symbols."
         ).format(pool_type=pool_type_key)
         
+        competitor_section = "No competitor data available; focus on Balancer metrics only."
+        if competitor_data:
+            fee_range = competitor_data.get("fee_range") or {}
+            min_fee = fee_range.get("min_fee")
+            med_fee = fee_range.get("median_fee")
+            max_fee = fee_range.get("max_fee")
+            total_vol = competitor_data.get("total_volume_24h")
+            competitors = competitor_data.get("competitors") or []
+            competitor_lines = []
+            for c in competitors:
+                competitor_lines.append(
+                    f"- {c.get('dex') or 'DEX'}: fee={c.get('swap_fee')} vol24h={c.get('volume_24h')} liq={c.get('liquidity')}"
+                )
+            competitor_section = (
+                "Competitor benchmarks (top DEXes):\n"
+                f"Fee range: {min_fee} – {max_fee} (median {med_fee})\n"
+                f"Total competitor 24h volume: {total_vol}\n"
+                + "\n".join(competitor_lines)
+            )
+
         user_prompt = (
             f"Balancer docs (summary for this pool type):\n{docs_snippet}\n\n"
             f"Pool metrics and context:\n{metrics_text}\n\n"
+            f"{competitor_section}\n\n"
             "Produce 4 concise bullet points with actionable recommendations for the pool administrator. "
             "Each bullet MUST:\n"
             "- Include specific numerical values (e.g., 'increase swap fee to 0.05%', 'target TVL of $500K', 'if volume drops below $10K/day')\n"
+            "- Compare to competitor fee/volume where relevant (e.g., 'increase fee from X to Y–Z%, still below median competitor fee')\n"
             "- Focus on actions the admin can take (e.g., 'adjust weights', 'modify swap fee', 'monitor rebalance frequency')\n"
             "- Be quantitative and data-driven\n"
             "- Be on its own line\n"
@@ -302,6 +341,102 @@ class InsightsGenerator:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+    async def _fetch_competitor_context(self, pool_data: dict) -> Dict[str, Any]:
+        """Best-effort fetch of competitor benchmarks for a single pool."""
+        try:
+            network = self._normalize_network(pool_data)
+            tokens = self._extract_tokens_for_benchmark(pool_data)
+            if len(tokens) < 2:
+                return {}
+            token_a, token_b = tokens[0], tokens[1]
+            return await self.dex_benchmarker.fetch_competitors(network, token_a, token_b)
+        except Exception as e:
+            logger.warning("DEXBenchmarker single-pool fallback: %s", e)
+            return {}
+
+    async def _fetch_competitors_for_pools(self, pool_items: List[Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
+        """Fetch competitor data per pool (parallel, best-effort)."""
+        results: Dict[int, Dict[str, Any]] = {}
+        tasks = []
+        for idx, item in enumerate(pool_items):
+            pool_data = item.get("pool_data") or {}
+            tokens = self._extract_tokens_for_benchmark(pool_data)
+            network = self._normalize_network(pool_data)
+            if len(tokens) >= 2:
+                token_a, token_b = tokens[0], tokens[1]
+                tasks.append(
+                    self.dex_benchmarker.fetch_competitors(network, token_a, token_b)
+                )
+            else:
+                tasks.append(asyncio.sleep(0, result={}))
+        
+        try:
+            fetched = await asyncio.gather(*tasks)
+            for idx, data in enumerate(fetched):
+                results[idx] = data
+        except Exception as e:
+            logger.warning("DEXBenchmarker multi-pool fallback: %s", e)
+        return results
+
+    def _normalize_network(self, pool_data: Dict[str, Any]) -> str:
+        """Map pool data or settings to a GeckoTerminal network slug."""
+        raw = (pool_data.get("_blockchain") or settings.blockchain_name or settings.default_chain or "ethereum").lower()
+        network_map = {
+            "mainnet": "eth",
+            "ethereum": "eth",
+            "eth": "eth",
+            "arbitrum": "arbitrum",
+            "polygon": "polygon",
+            "optimism": "optimism",
+            "base": "base",
+        }
+        return network_map.get(raw, raw)
+
+    def _extract_tokens(self, pool_data: Dict[str, Any]) -> List[str]:
+        """Extract token addresses from pool data (raw)."""
+        tokens = pool_data.get("allTokens") or pool_data.get("displayTokens") or pool_data.get("tokens") or []
+        addrs = []
+        for t in tokens:
+            addr = t.get("address") or t.get("tokenAddress")
+            if addr:
+                addrs.append(addr.lower())
+        # Deduplicate, keep order
+        seen = set()
+        deduped = []
+        for a in addrs:
+            if a not in seen:
+                seen.add(a)
+                deduped.append(a)
+        return deduped
+
+    def _extract_tokens_for_benchmark(self, pool_data: Dict[str, Any]) -> List[str]:
+        """
+        Extract *benchmark* token addresses (prefer 2 core ERC-20 tokens, skip BPT/LP-like tokens).
+        This prevents accidentally choosing internal/BPT-like tokens that won't resolve on GeckoTerminal.
+        """
+        tokens = pool_data.get("allTokens") or pool_data.get("displayTokens") or pool_data.get("tokens") or []
+        candidates: List[str] = []
+        for t in tokens:
+            symbol = (t.get("symbol") or "").upper()
+            addr = (t.get("address") or t.get("tokenAddress") or "").lower()
+            if not addr:
+                continue
+            # Skip obvious pool/BPT/LP tokens
+            if "BPT" in symbol or symbol in {"BPT", "BALANCER", "POOL"}:
+                continue
+            candidates.append(addr)
+
+        # Deduplicate, keep order; return first 2
+        seen = set()
+        result = []
+        for a in candidates:
+            if a not in seen:
+                seen.add(a)
+                result.append(a)
+            if len(result) >= 2:
+                break
+        return result
+
     def _load_pool_type_docs(self, pool_type_key: str) -> str:
         """Load curated markdown snippet for a pool type."""
         mapping = {

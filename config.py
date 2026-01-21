@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     enable_insights_live_docs: bool = False
     insights_docs_base_urls: list[str] | None = None
     insights_max_doc_chars: int = 6000
+
+    # DEX Benchmarking (GeckoTerminal)
+    gecko_base_url: str = "https://api.geckoterminal.com/api/v2"
+    dex_benchmark_enabled: bool = True
+    dex_benchmark_top_n: int = 3
+    dex_benchmark_timeout: float = 10.0
     
     # Optional default pool
     default_pool_address: str | None = None
