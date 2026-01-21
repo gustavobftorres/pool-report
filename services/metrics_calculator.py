@@ -147,18 +147,19 @@ class MetricsCalculator:
         
         return f"https://balancer.fi/pools/{blockchain}/{version}/{pool_address.lower()}"
     
-    async def calculate_pool_metrics(self, pool_address: str) -> PoolMetrics:
+    async def calculate_pool_metrics(self, pool_address: str, blockchain: str | None = None) -> PoolMetrics:
         """
         Calculate comprehensive pool metrics comparing current vs 15 days ago.
         
         Args:
             pool_address: Ethereum address of the pool
+            blockchain: Optional blockchain name (e.g., "ethereum", "arbitrum", "plasma")
             
         Returns:
             PoolMetrics object with all calculated metrics
         """
         # Get current pool data
-        current_pool = await self.api.get_current_pool_data(pool_address)
+        current_pool = await self.api.get_current_pool_data(pool_address, blockchain=blockchain)
         
         # Detect pool version
         pool_version = current_pool.get("_api_version", "v2")
@@ -167,7 +168,8 @@ class MetricsCalculator:
         snapshots = await self.api.get_pool_snapshots(
             pool_address, 
             days_back=30,
-            pool_version=pool_version
+            pool_version=pool_version,
+            blockchain=blockchain
         )
         
         # Calculate timestamp for 15 days ago
@@ -178,7 +180,8 @@ class MetricsCalculator:
         snapshot_15d_ago = await self.api.get_snapshot_at_timestamp(
             pool_address,
             fifteen_days_ago_ts,
-            pool_version=pool_version
+            pool_version=pool_version,
+            blockchain=blockchain
         )
         
         # Extract current metrics
@@ -252,14 +255,12 @@ class MetricsCalculator:
             if current_cumulative_fees > fees_15d_ago:
                 fees_change_percent = ((current_cumulative_fees - fees_15d_ago) / fees_15d_ago) * 100
         
-        # Extract APR - try multiple approaches
+        # Extract APR
         apr_current = None
         
-        # 1. Try to get totalApr directly (common in V3)
         if "totalApr" in dynamic_data:
             apr_current = float(dynamic_data.get("totalApr", 0))
         
-        # 2. Try aprItems array (V2 and some V3)
         if apr_current is None or apr_current == 0:
             apr_items = dynamic_data.get("aprItems", [])
             if apr_items:
@@ -271,20 +272,15 @@ class MetricsCalculator:
                     # Fallback: use first item
                     apr_current = float(apr_items[0].get("apr", 0))
         
-        # 3. Try apr field directly
         if apr_current is None or apr_current == 0:
             if "apr" in dynamic_data:
                 apr_current = float(dynamic_data.get("apr", 0))
         
-        # 4. Try to calculate from pool data (V2 fallback)
         if apr_current is None or apr_current == 0:
-            # V2 pools might have APR in different location
             if "totalShares" in current_pool:
-                # Check if APR is in the root of current_pool
                 if "apr" in current_pool:
                     apr_current = float(current_pool.get("apr", 0))
         
-        # 5. Calculate APR from fees and TVL (fallback for V2 pools)
         if (apr_current is None or apr_current == 0) and tvl_current > 0 and fees_15_days > 0:
             # Get daily average from 15-day period
             fees_per_day = fees_15_days / 15
@@ -364,12 +360,10 @@ class MetricsCalculator:
         ]
         
         # Calculate cumulative metrics
-        # Method 1: If we have snapshots with cumulative data
         if period_snapshots:
             latest_snapshot = period_snapshots[-1]
             earliest_snapshot = period_snapshots[0]
             
-            # If we have a snapshot before the period, use it as baseline
             if pre_period_snapshots:
                 baseline_snapshot = max(
                     pre_period_snapshots,
@@ -384,7 +378,6 @@ class MetricsCalculator:
             latest_volume = float(latest_snapshot.get("swapVolume", 0))
             latest_fees = float(latest_snapshot.get("swapFees", 0))
             
-            # Calculate the difference (cumulative change)
             total_volume = max(0, latest_volume - base_volume)
             total_fees = max(0, latest_fees - base_fees)
             

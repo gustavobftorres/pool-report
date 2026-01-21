@@ -27,10 +27,12 @@ class Settings(BaseSettings):
 
     # Telegram Config (only needed for FastAPI backend)
     telegram_bot_token: str | None = None
-    telegram_chat_id: str | None = None  # Optional: fallback chat ID
     
-    # Database Configuration (required for both FastAPI and Streamlit)
-    database_url: str = "postgresql://localhost:5432/pool_report"
+    # Notion API Configuration
+    notion_api_key: str | None = None
+    
+    # Database Configuration (optional - no longer used, kept for backwards compatibility)
+    database_url: str | None = None
     
     # Optional default pool
     default_pool_address: str | None = None
