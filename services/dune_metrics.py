@@ -18,7 +18,7 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 
-# Query ID mapping: 7 metric groups × 5 DEXs = 30 queries
+# Query ID mapping: 8 metric groups × 5 DEXs = 40 queries
 DUNE_QUERIES = {
     "demand_usage": {
         "UniSwap": 6583146,
@@ -28,11 +28,11 @@ DUNE_QUERIES = {
         "PancakeSwap": 6583446,
     },
     "liquidity_depth": {
-        "UniSwap": 6577231,
-        "Fluid": 6577393,
-        "Curve": 6583101,
-        "Balancer": 6576965,
-        "PancakeSwap": 6577398,
+        "UniSwap": 6587972,
+        "Fluid": 6587953,
+        "Curve": 6587962,
+        "Balancer": 6587861,
+        "PancakeSwap": 6587974,
     },
     "fee_monetization": {
         "UniSwap": 6582703,
@@ -42,17 +42,17 @@ DUNE_QUERIES = {
         "PancakeSwap": 6582732,
     },
     "capital_efficiency": {
-        "UniSwap": 6582815,
-        "Fluid": 6582796,
-        "Curve": 6582828,
-        "Balancer": 6582746,
-        "PancakeSwap": 6582848,
+        "UniSwap": 6587988,
+        "Fluid": 6587983,
+        "Curve": 6587986,
+        "Balancer": 6587887,
+        "PancakeSwap": 6587990,
     },
     "lp_outcome": {
         "UniSwap": 6582905,
         "Fluid": 6582888,
         "Curve": 6582917,
-        "Balancer": 6582864,
+        "Balancer": 6587905,
         "PancakeSwap": 6582923,
     },
     "behavioral_market_power": {
@@ -69,6 +69,13 @@ DUNE_QUERIES = {
         "Balancer": 6583035,
         "PancakeSwap": 6583066,
     },
+    "volume_depth_unit": {
+        "UniSwap": 6588014,
+        "Fluid": 6588001,
+        "Curve": 6588009,
+        "Balancer": 6587900,
+        "PancakeSwap": 6588023,
+    },
 }
 
 # Metric group display names
@@ -80,6 +87,7 @@ METRIC_GROUP_NAMES = {
     "lp_outcome": "LP Outcome Metrics",
     "behavioral_market_power": "Behavioral & Market Power Metrics",
     "comparative_positioning": "Comparative Positioning Metrics",
+    "volume_depth_unit": "Volume Depth Unit Metrics",
 }
 
 

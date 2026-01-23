@@ -5,6 +5,7 @@ Multi-agent insights generator:
 - For multi-pool, runs one specialist per pool and then selects a subset of bullets.
 """
 import asyncio
+import json
 import os
 import logging
 from typing import Optional, List, Dict, Any
@@ -14,6 +15,7 @@ from openai import AsyncOpenAI
 from config import settings
 from models import PoolMetrics, MultiPoolMetrics
 from services.dex_benchmarker import DEXBenchmarker
+from services.dune_metrics import METRIC_GROUP_NAMES, DuneMetricsService
 logger = logging.getLogger(__name__)
 
 
@@ -60,6 +62,9 @@ class InsightsGenerator:
 
         # DEX benchmarking
         self.dex_benchmarker = DEXBenchmarker()
+        
+        # Dune metrics service for AI tool access
+        self.dune_service = DuneMetricsService()
     
     async def generate_single_pool_insights(
         self,
@@ -497,3 +502,502 @@ class InsightsGenerator:
         if not bullets:
             return ""
         return "\n".join(f"• {b}" for b in bullets)
+    
+    async def generate_dune_metrics_insights(
+        self,
+        pipeline_results: Dict[str, Any],
+        max_bullets: int = 5,
+    ) -> str:
+        """
+        Generate actionable insights from Dune metrics pipeline results.
+        
+        Analyzes the input pool against competitors using 8 metric groups from Dune.
+        Provides AI with tool access to fetch additional data if needed.
+        
+        Args:
+            pipeline_results: Results dictionary from MetricsPipeline.analyze_pool_with_competitors()
+                Format: {
+                    "input_pool": {
+                        "pool_address": str,
+                        "pool_name": str,
+                        "dex": str,
+                        "blockchain": str,
+                        "metrics": {metric_group: {rows: [...], error: ...}}
+                    },
+                    "competitors": [
+                        {
+                            "pool_address": str,
+                            "pool_name": str,
+                            "dex": str,
+                            "blockchain": str,
+                            "metrics": {metric_group: {rows: [...], error: ...}}
+                        },
+                        ...
+                    ]
+                }
+            max_bullets: Maximum number of insights to return
+            
+        Returns:
+            Formatted string with bullet-point insights
+        """
+        if not self.enabled or not self.client:
+            return ""
+        
+        input_pool = pipeline_results.get("input_pool")
+        if not input_pool:
+            return ""
+        
+        # Get pool data (we need it for pool type detection)
+        pool_data = {
+            "name": input_pool.get("pool_name", "Unknown"),
+            "address": input_pool.get("pool_address"),
+            "type": input_pool.get("dex", "Unknown"),
+        }
+        
+        # Format input pool metrics
+        input_metrics_text = self._format_dune_metrics(input_pool.get("metrics", {}))
+        
+        # Format competitor comparison (with full metrics)
+        competitors = pipeline_results.get("competitors", [])
+        competitor_comparison = self._format_competitor_comparison(competitors)
+        
+        # Detect pool type (try to infer from DEX or use unknown)
+        pool_type_key = self._normalize_pool_type(pool_data)
+        
+        # Load specialist docs
+        docs_snippet = self._load_pool_type_docs(pool_type_key)
+        
+        # Load metrics documentation
+        metrics_docs = self._load_metrics_docs()
+        
+        # Build and call specialist with comparative prompt and tool access
+        bullets = await self._call_specialist_model_comparative(
+            pool_type_key=pool_type_key,
+            pool_name=input_pool.get("pool_name", "Unknown"),
+            pool_dex=input_pool.get("dex", "Unknown"),
+            pool_address=input_pool.get("pool_address", ""),
+            blockchain=input_pool.get("blockchain", "ethereum"),
+            input_metrics_text=input_metrics_text,
+            competitor_comparison=competitor_comparison,
+            docs_snippet=docs_snippet,
+            metrics_docs=metrics_docs,
+        )
+        
+        # Limit bullets
+        bullets = bullets[:max_bullets]
+        return self._format_bullets(bullets)
+    
+    def _format_dune_metrics(self, metrics: Dict[str, Any]) -> str:
+        """
+        Format Dune metrics dictionary into readable text for LLM.
+        
+        Args:
+            metrics: Dictionary with metric groups as keys
+                Format: {
+                    "demand_usage": {"rows": [...], "error": ...},
+                    "liquidity_depth": {"rows": [...], "error": ...},
+                    ...
+                }
+        
+        Returns:
+            Formatted text string
+        """
+        lines = []
+        
+        for metric_group, group_name in METRIC_GROUP_NAMES.items():
+            if metric_group not in metrics:
+                continue
+            
+            metric_data = metrics[metric_group]
+            lines.append(f"\n=== {group_name} ===")
+            
+            # Check for errors
+            if "error" in metric_data:
+                lines.append(f"Error: {metric_data['error']}")
+                continue
+            
+            # Format rows
+            rows = metric_data.get("rows", [])
+            if not rows:
+                lines.append("No data available")
+                continue
+            
+            # Format first few rows (limit to avoid token limits)
+            for i, row in enumerate(rows[:5]):  # Limit to 5 rows per metric group
+                if isinstance(row, dict):
+                    # Format as key-value pairs
+                    row_str = ", ".join([f"{k}: {v}" for k, v in row.items()])
+                    lines.append(f"  {row_str}")
+                else:
+                    lines.append(f"  {row}")
+            
+            if len(rows) > 5:
+                lines.append(f"  ... ({len(rows) - 5} more rows)")
+        
+        return "\n".join(lines)
+    
+    def _format_competitor_comparison(self, competitors: List[Dict[str, Any]]) -> str:
+        """
+        Format competitor pools for comparative analysis with full metrics.
+        
+        Args:
+            competitors: List of competitor pool dictionaries with metrics
+        
+        Returns:
+            Formatted text string for LLM context with detailed metrics
+        """
+        if not competitors:
+            return "No competitor pools available for comparison."
+        
+        lines = [
+            f"Competitor Analysis: {len(competitors)} competitor pools found",
+            ""
+        ]
+        
+        for i, competitor in enumerate(competitors, 1):
+            pool_name = competitor.get("pool_name", "Unknown")
+            dex = competitor.get("dex", "Unknown")
+            pool_address = competitor.get("pool_address", "Unknown")
+            blockchain = competitor.get("blockchain", "Unknown")
+            
+            lines.append(f"=== Competitor {i}: {pool_name} ({dex}) ===")
+            lines.append(f"Address: {pool_address}")
+            lines.append(f"Blockchain: {blockchain}")
+            lines.append("")
+            
+            # Format full metrics for competitor (same as input pool)
+            metrics = competitor.get("metrics", {})
+            competitor_metrics_text = self._format_dune_metrics(metrics)
+            lines.append(competitor_metrics_text)
+            lines.append("")  # Empty line between competitors
+        
+        return "\n".join(lines)
+    
+    async def _call_specialist_model_comparative(
+        self,
+        pool_type_key: str,
+        pool_name: str,
+        pool_dex: str,
+        pool_address: str,
+        blockchain: str,
+        input_metrics_text: str,
+        competitor_comparison: str,
+        docs_snippet: str,
+        metrics_docs: str,
+    ) -> List[str]:
+        """
+        Call specialist model with comparative analysis prompt and tool access.
+        
+        Args:
+            pool_type_key: Pool type for specialist selection
+            pool_name: Name of the input pool
+            pool_dex: DEX name of the input pool
+            pool_address: Pool address for API calls
+            blockchain: Blockchain name for API calls
+            input_metrics_text: Formatted metrics text for input pool
+            competitor_comparison: Formatted competitor comparison text
+            docs_snippet: Specialist documentation snippet
+            metrics_docs: Metrics documentation explaining all Dune metrics
+        
+        Returns:
+            List of insight bullet points
+        """
+        if not self.enabled or not self.client:
+            return []
+        
+        # Define tools (functions) for the AI to call
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "fetch_dune_metrics",
+                    "description": (
+                        "Fetch additional metrics from Dune Analytics for a specific pool. "
+                        "Use this to get more detailed data for any pool (input or competitor) if you need deeper analysis. "
+                        "Returns all 8 metric groups: demand_usage, liquidity_depth, fee_monetization, "
+                        "capital_efficiency, lp_outcome, behavioral_market_power, comparative_positioning, volume_depth_unit."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "pool_address": {
+                                "type": "string",
+                                "description": "The pool address to query (e.g., '0x3de27efa2f1aa663ae5d458857e731c129069f29')"
+                            },
+                            "blockchain": {
+                                "type": "string",
+                                "description": "Blockchain name (e.g., 'ethereum', 'arbitrum', 'polygon')",
+                                "enum": ["ethereum", "arbitrum", "polygon", "optimism", "base"]
+                            },
+                            "dex": {
+                                "type": "string",
+                                "description": "DEX name for the pool",
+                                "enum": ["Balancer", "UniSwap", "Curve", "Fluid", "PancakeSwap"]
+                            },
+                            "main_token_symbol": {
+                                "type": "string",
+                                "description": "Optional: Main token symbol (required for comparative_positioning queries)"
+                            }
+                        },
+                        "required": ["pool_address", "blockchain", "dex"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "fetch_gecko_competitors",
+                    "description": (
+                        "Fetch competitor pools from GeckoTerminal API for a given token. "
+                        "Use this to find additional competitor pools or get more details about existing competitors. "
+                        "Returns pools containing the specified token paired with any other token."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "network": {
+                                "type": "string",
+                                "description": "Network slug (e.g., 'eth', 'arbitrum', 'polygon')"
+                            },
+                            "token_address": {
+                                "type": "string",
+                                "description": "Token address to search for (will find pools containing this token)"
+                            },
+                            "top_n": {
+                                "type": "integer",
+                                "description": "Number of top pools to return (default: 3)",
+                                "default": 3
+                            }
+                        },
+                        "required": ["network", "token_address"]
+                    }
+                }
+            }
+        ]
+        
+        system_prompt = (
+            "You are an expert DeFi analyst specializing in deep DEX pool analysis. "
+            "You analyze pools across multiple DEXes (Balancer, UniSwap, Curve, Fluid, PancakeSwap) "
+            "using 8 comprehensive metric groups: Demand/Usage, Liquidity & Depth, Fee & Monetization, "
+            "Capital Efficiency, LP Outcome, Behavioral & Market Power, Comparative Positioning, and Volume Depth Unit. "
+            "\n\n"
+            "You have access to tools that allow you to:\n"
+            "1. Fetch additional Dune metrics for any pool if you need more detailed data\n"
+            "2. Search for additional competitor pools via GeckoTerminal API\n"
+            "\n"
+            "Use these tools proactively if you need more data to provide a comprehensive analysis. "
+            "Don't hesitate to fetch additional metrics or find more competitors if it would improve your analysis.\n"
+            "\n"
+            "Your analysis should be DEEP and COMPREHENSIVE. You must:\n"
+            "- Analyze relationships between different metric groups (e.g., how TVL affects price impact, how volume relates to fees)\n"
+            "- Compare specific numerical values across competitors (not just general statements)\n"
+            "- Identify patterns, anomalies, and opportunities\n"
+            "- Provide actionable recommendations with specific targets and thresholds\n"
+            "- Reference the metrics documentation to understand what each metric means and how to interpret it\n"
+            "- Consider economic relationships (e.g., capital efficiency vs fee generation, risk-adjusted returns)\n"
+            "\n"
+            "Return only plain text bullet points, one per line, without markdown symbols. "
+            "Each bullet should be substantial and data-rich, not superficial."
+        )
+        
+        # Build comprehensive user prompt
+        user_prompt_parts = [
+            f"Pool Information:",
+            f"Pool Name: {pool_name}",
+            f"Pool Address: {pool_address}",
+            f"DEX: {pool_dex}",
+            f"Blockchain: {blockchain}",
+            f"Pool Type: {pool_type_key}",
+            "",
+            "=== METRICS DOCUMENTATION ===",
+            "This document explains all the metrics you'll see. Use it to understand what each metric means, "
+            "how to interpret it, and how to compare pools effectively:",
+            metrics_docs if metrics_docs else "Metrics documentation not available.",
+            "",
+            "=== POOL TYPE SPECIALIST DOCUMENTATION ===",
+            docs_snippet,
+            "",
+            "=== INPUT POOL METRICS (8 metric groups from Dune Analytics) ===",
+            input_metrics_text,
+            "",
+            "=== COMPETITOR POOLS ANALYSIS ===",
+            competitor_comparison,
+            "",
+            "=== ANALYSIS INSTRUCTIONS ===",
+            "Perform a DEEP, COMPREHENSIVE analysis of the input pool compared to competitors. "
+            "You have access to tools to fetch additional data if needed.\n"
+            "\n"
+            "Your analysis should include:\n"
+            "1. Quantitative comparisons across all 8 metric groups\n"
+            "2. Identification of strengths and weaknesses relative to competitors\n"
+            "3. Analysis of relationships between metrics (e.g., how capital efficiency affects LP outcomes)\n"
+            "4. Specific numerical targets and thresholds for improvement\n"
+            "5. Actionable recommendations with concrete steps\n"
+            "\n"
+            "If you need more data to provide a thorough analysis, use the available tools:\n"
+            "- fetch_dune_metrics: Get detailed metrics for any pool\n"
+            "- fetch_gecko_competitors: Find additional competitor pools\n"
+            "\n"
+            "Provide 5-7 substantial bullet points. Each bullet MUST:\n"
+            "- Include specific numerical values from the metrics (percentages, dollar amounts, ratios, etc.)\n"
+            "- Compare specific values between input pool and competitors\n"
+            "- Reference specific metric groups and explain their significance\n"
+            "- Provide actionable recommendations with quantitative targets\n"
+            "- Be data-driven and reference the metrics documentation\n"
+            "- Be on its own line\n"
+            "- NOT start with '-', '*', or '•'"
+        ]
+        
+        user_prompt = "\n".join(user_prompt_parts)
+        
+        # Execute with tool calling support
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        
+        max_iterations = 5  # Allow multiple tool calls
+        iteration = 0
+        
+        while iteration < max_iterations:
+            try:
+                response = await asyncio.wait_for(
+                    self.client.chat.completions.create(
+                        model=self.specialist_model,
+                        messages=messages,
+                        tools=tools,
+                        tool_choice="auto",  # Let the model decide when to use tools
+                        temperature=0.7,
+                        max_tokens=1200,  # Increased for comprehensive analysis
+                    ),
+                    timeout=60.0,  # Increased timeout for tool calls
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Specialist model timeout - skipping insights")
+                return []
+            except Exception as e:
+                logger.warning(f"Error calling specialist model: {e}")
+                return []
+            
+            message = response.choices[0].message
+            
+            # Add assistant's response to messages
+            messages.append(message)
+            
+            # Check if the model wants to call tools
+            if message.tool_calls:
+                # Execute tool calls
+                for tool_call in message.tool_calls:
+                    function_name = tool_call.function.name
+                    try:
+                        function_args = json.loads(tool_call.function.arguments)
+                    except json.JSONDecodeError:
+                        logger.warning(f"Failed to parse tool arguments: {tool_call.function.arguments}")
+                        function_args = {}
+                    
+                    # Execute the function
+                    if function_name == "fetch_dune_metrics":
+                        tool_result = await self._tool_fetch_dune_metrics(**function_args)
+                    elif function_name == "fetch_gecko_competitors":
+                        tool_result = await self._tool_fetch_gecko_competitors(**function_args)
+                    else:
+                        tool_result = {"error": f"Unknown function: {function_name}"}
+                    
+                    # Add tool result to messages
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": json.dumps(tool_result),
+                    })
+                
+                iteration += 1
+                continue  # Continue the loop to get the final response
+            
+            # No tool calls, we have the final response
+            break
+        
+        content = (message.content or "").strip()
+        if not content:
+            return []
+        
+        # Convert to clean bullet list
+        bullets: List[str] = []
+        for line in content.split("\n"):
+            text = line.strip()
+            if not text:
+                continue
+            text = text.lstrip("•-* ").strip()
+            if text:
+                bullets.append(text)
+        
+        return bullets
+    
+    async def _tool_fetch_dune_metrics(
+        self,
+        pool_address: str,
+        blockchain: str,
+        dex: str,
+        main_token_symbol: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Tool function for AI to fetch Dune metrics."""
+        try:
+            metrics = await self.dune_service.fetch_metrics_for_pool(
+                pool_address=pool_address,
+                blockchain=blockchain,
+                dex=dex,
+                main_token_symbol=main_token_symbol,
+            )
+            # Format the metrics for the AI
+            formatted = self._format_dune_metrics(metrics)
+            return {
+                "success": True,
+                "pool_address": pool_address,
+                "metrics": formatted,
+            }
+        except Exception as e:
+            logger.warning(f"Error in tool_fetch_dune_metrics: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
+    
+    async def _tool_fetch_gecko_competitors(
+        self,
+        network: str,
+        token_address: str,
+        top_n: int = 3,
+    ) -> Dict[str, Any]:
+        """Tool function for AI to fetch competitor pools from GeckoTerminal."""
+        try:
+            # The benchmarker searches for pools containing token_b paired with any token
+            # We'll use token_address as token_b and pass empty token_a
+            competitors = await self.dex_benchmarker.fetch_competitors(
+                network=network,
+                token_a="",  # Not used when searching by token_b
+                token_b=token_address,
+                top_n=top_n,
+            )
+            return {
+                "success": True,
+                "network": network,
+                "token_address": token_address,
+                "competitors": competitors,
+            }
+        except Exception as e:
+            logger.warning(f"Error in tool_fetch_gecko_competitors: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
+    
+    def _load_metrics_docs(self) -> str:
+        """Load the metrics documentation that explains all Dune metrics."""
+        doc_file = os.path.join(self.docs_dir, "metrics.md")
+        if os.path.exists(doc_file):
+            try:
+                with open(doc_file, "r", encoding="utf-8") as f:
+                    return f.read()
+            except Exception as e:
+                logger.warning(f"Failed to load metrics docs: {e}")
+        return ""
+

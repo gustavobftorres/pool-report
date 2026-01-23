@@ -10,6 +10,7 @@ from pathlib import Path
 import pandas as pd
 from services.metrics_pipeline import MetricsPipeline
 from services.dune_metrics import METRIC_GROUP_NAMES
+from services.insights_generator import InsightsGenerator
 
 # Configure logging to see all the debug logs
 logging.basicConfig(
@@ -43,6 +44,29 @@ async def main():
         # Export to Excel
         excel_filename = export_to_excel(results, pool_address)
         print(f"\n📊 Results exported to: {excel_filename}")
+        
+        # Generate insights using specialist LLMs
+        print("\n" + "=" * 80)
+        print("GENERATING INSIGHTS WITH SPECIALIST LLMs")
+        print("=" * 80)
+        insights_generator = InsightsGenerator()
+        if insights_generator.enabled:
+            try:
+                insights = await insights_generator.generate_dune_metrics_insights(
+                    results,
+                    max_bullets=5
+                )
+                if insights:
+                    print("\n🤖 AI-Generated Insights:")
+                    print(insights)
+                else:
+                    print("\n⚠️  No insights generated (check OpenAI API key and configuration)")
+            except Exception as e:
+                print(f"\n❌ Error generating insights: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            print("\nℹ️  Insights generation disabled (set ENABLE_INSIGHTS=true and OPENAI_API_KEY in .env)")
         
         print("\n✅ Pipeline test completed successfully!")
         
