@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     dex_benchmark_top_n: int = 3
     dex_benchmark_timeout: float = 10.0
     
+    # Dune API Configuration
+    dune_api_key: str | None = None
+    dune_query_performance: str = "medium"  # "low", "medium", "high"
+    dune_query_timeout: float = 60.0
+    
     # Optional default pool
     default_pool_address: str | None = None
     
