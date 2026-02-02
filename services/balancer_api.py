@@ -93,10 +93,32 @@ class BalancerAPI:
         }
         return mapping.get(blockchain_name.lower(), blockchain_name.upper())
     
+    def _get_all_chains(self) -> list[tuple[str, str]]:
+        """
+        Get list of all available chains as (blockchain_name, api_chain) tuples.
+        
+        Returns:
+            List of (blockchain_name, api_chain) tuples
+        """
+        return [
+            ("ethereum", "MAINNET"),
+            ("arbitrum", "ARBITRUM"),
+            ("polygon", "POLYGON"),
+            ("base", "BASE"),
+            ("gnosis", "GNOSIS"),
+            ("optimism", "OPTIMISM"),
+            ("avalanche", "AVALANCHE"),
+            ("zkevm", "ZKEVM"),
+            ("mode", "MODE"),
+            ("fraxtal", "FRAXTAL"),
+            ("plasma", "PLASMA"),
+        ]
+    
     async def get_current_pool_data(self, pool_address: str, blockchain: str | None = None) -> Dict[str, Any]:
         """
         Get current pool data from Balancer GraphQL endpoint.
         Supports both V2 (via subgraph) and V3 (via API) automatically.
+        If pool is not found on specified chain, tries all available chains.
         
         Args:
             pool_address: Ethereum address of the pool (42 chars)
@@ -106,84 +128,128 @@ class BalancerAPI:
         Returns:
             Dictionary containing pool data
         """
-        # Determine which chain to use
+        # Determine which chains to try
+        chains_to_try = []
         if blockchain:
             api_chain = self._blockchain_name_to_api_chain(blockchain)
             blockchain_name = blockchain.lower()
+            chains_to_try = [(blockchain_name, api_chain)]
         else:
             api_chain = self.chain
             blockchain_name = self.blockchain_name
+            chains_to_try = [(blockchain_name, api_chain)]
         
-        print(f"🔍 Querying pool {pool_address} on chain: {api_chain} ({blockchain_name})")
+        # If not found, try all chains
+        all_chains = self._get_all_chains()
         
-        # Note: V2 subgraph is typically Ethereum-only, so skip if querying other chains
-        if self.gql_endpoint and (not blockchain or blockchain.lower() == "ethereum"):
+        # Try V2 subgraph first (Ethereum only)
+        if self.gql_endpoint:
             print(f"🔍 Querying V2 subgraph by address: {pool_address}")
             try:
                 pool = await self._get_v2_pool_by_address(pool_address)
                 if pool:
                     print(f"✅ Found V2 pool: {pool.get('name', pool.get('id'))}")
-                    pool['_blockchain'] = blockchain_name
+                    pool['_blockchain'] = "ethereum"
                     return pool
                 else:
                     print(f"⚠️  Pool not found in V2 subgraph for address: {pool_address}")
             except Exception as e:
                 print(f"⚠️  V2 query error for {pool_address}: {str(e)}")
-        elif blockchain and blockchain.lower() != "ethereum":
-            print(f"⏭️  Skipping V2 subgraph (only supports Ethereum, querying {blockchain})")
         
-        # Try V3 API format
-        try:
-            query = """
-            query GetPool($id: String!, $chain: GqlChain!) {
-              poolGetPool(id: $id, chain: $chain) {
+        # Try V3 API on specified chain first, then all chains
+        query = """
+        query GetPool($id: String!, $chain: GqlChain!) {
+          poolGetPool(id: $id, chain: $chain) {
+            id
+            address
+            name
+            type
+            version
+            dynamicData {
+              totalLiquidity
+              volume24h
+              fees24h
+              swapFee
+              aprItems {
                 id
-                address
-                name
+                title
+                apr
                 type
-                version
-                dynamicData {
-                  totalLiquidity
-                  volume24h
-                  fees24h
-                  swapFee
-                  aprItems {
-                    id
-                    title
-                    apr
-                    type
-                  }
-                }
-                allTokens {
-                  address
-                  symbol
-                  name
-                  weight
-                }
               }
             }
-            """
-            
-            variables = {
-                "id": pool_address.lower(),
-                "chain": api_chain
+            allTokens {
+              address
+              symbol
+              name
+              weight
             }
+          }
+        }
+        """
+        
+        # Try specified chain first
+        for blockchain_name, api_chain in chains_to_try:
+            print(f"🔍 Querying pool {pool_address} on chain: {api_chain} ({blockchain_name})")
+            try:
+                variables = {
+                    "id": pool_address.lower(),
+                    "chain": api_chain
+                }
+                
+                data = await self._execute_query(self.v3_api_url, query, variables)
+                pool = data.get("poolGetPool")
+                
+                if pool:
+                    print(f"✅ Found V3 pool: {pool.get('name')} on {blockchain_name}")
+                    # Debug: log volume24h and fees24h from API
+                    dynamic_data = pool.get("dynamicData", {})
+                    if dynamic_data:
+                        volume24h_api = dynamic_data.get("volume24h", "N/A")
+                        fees24h_api = dynamic_data.get("fees24h", "N/A")
+                        print(f"   📊 API returned - volume24h: {volume24h_api}, fees24h: {fees24h_api}")
+                    # Add metadata for URL generation
+                    pool['_api_version'] = 'v3'
+                    pool['_blockchain'] = blockchain_name
+                    return pool
+            except Exception as e:
+                print(f"⚠️  V3 API failed on {blockchain_name}: {str(e)}")
+        
+        # If not found on specified chain, try all other chains
+        print(f"🔍 Pool not found on {blockchain_name}, trying all available chains...")
+        for blockchain_name, api_chain in all_chains:
+            # Skip if already tried
+            if (blockchain_name, api_chain) in chains_to_try:
+                continue
             
-            data = await self._execute_query(self.v3_api_url, query, variables)
-            pool = data.get("poolGetPool")
-            
-            if pool:
-                print(f"✅ Found V3 pool: {pool.get('name')}")
-                # Add metadata for URL generation
-                pool['_api_version'] = 'v3'
-                pool['_blockchain'] = blockchain_name
-                return pool
-        except Exception as e:
-            print(f"⚠️  V3 API failed: {str(e)}")
+            print(f"   Trying {api_chain} ({blockchain_name})...")
+            try:
+                variables = {
+                    "id": pool_address.lower(),
+                    "chain": api_chain
+                }
+                
+                data = await self._execute_query(self.v3_api_url, query, variables)
+                pool = data.get("poolGetPool")
+                
+                if pool:
+                    print(f"✅ Found V3 pool: {pool.get('name')} on {blockchain_name}")
+                    # Debug: log volume24h and fees24h from API
+                    dynamic_data = pool.get("dynamicData", {})
+                    if dynamic_data:
+                        volume24h_api = dynamic_data.get("volume24h", "N/A")
+                        fees24h_api = dynamic_data.get("fees24h", "N/A")
+                        print(f"   📊 API returned - volume24h: {volume24h_api}, fees24h: {fees24h_api}")
+                    # Add metadata for URL generation
+                    pool['_api_version'] = 'v3'
+                    pool['_blockchain'] = blockchain_name
+                    return pool
+            except Exception as e:
+                # Silently continue to next chain
+                continue
         
         raise BalancerAPIError(
-            f"Pool not found: {pool_address} on chain {api_chain}. "
-            f"Tried both V2 subgraph and V3 API."
+            f"Pool not found: {pool_address} on any chain. "
+            f"Tried V2 subgraph and V3 API on all available chains."
         )
     
     async def _get_v2_pool_by_address(self, pool_address: str) -> Dict[str, Any] | None:
@@ -326,15 +392,24 @@ class BalancerAPI:
             for snapshot in snapshots:
                 timestamp = int(snapshot.get("timestamp", 0))
                 if timestamp >= start_timestamp:
-                    cumulative_volume += float(snapshot.get("volume24h", 0))
-                    cumulative_fees += float(snapshot.get("fees24h", 0))
+                    volume24h = float(snapshot.get("volume24h", 0))
+                    fees24h = float(snapshot.get("fees24h", 0))
+                    
+                    cumulative_volume += volume24h
+                    cumulative_fees += fees24h
+                    
+                    # Calculate fees24h/volume24h ratio (swap fee rate)
+                    volume_fees_ratio = fees24h / volume24h if volume24h > 0 else 0.0
                     
                     normalized_snapshots.append({
                         "timestamp": timestamp,
                         "liquidity": snapshot.get("totalLiquidity", "0"),
                         "swapVolume": str(cumulative_volume),
                         "swapFees": str(cumulative_fees),
-                        "swapsCount": 0
+                        "swapsCount": 0,
+                        "volume24h": str(volume24h),
+                        "fees24h": str(fees24h),
+                        "volumeFeesRatio": volume_fees_ratio
                     })
             
             print(f"✅ Got {len(normalized_snapshots)} V3 snapshots")
@@ -427,6 +502,31 @@ class BalancerAPI:
             print(f"⚠️  No historical snapshots found for pool {pool_id}")
         else:
             print(f"✅ Found {len(snapshots)} snapshots")
+            
+            # Calculate volume24h/fees24h ratio for each snapshot
+            # For V2, we need to calculate 24h metrics from cumulative data
+            for i, snapshot in enumerate(snapshots):
+                swap_volume = float(snapshot.get("swapVolume", 0))
+                swap_fees = float(snapshot.get("swapFees", 0))
+                
+                # Calculate 24h volume and fees by comparing with previous snapshot
+                if i > 0:
+                    prev_volume = float(snapshots[i-1].get("swapVolume", 0))
+                    prev_fees = float(snapshots[i-1].get("swapFees", 0))
+                    volume24h = swap_volume - prev_volume
+                    fees24h = swap_fees - prev_fees
+                else:
+                    # First snapshot: use cumulative values as 24h estimate
+                    volume24h = swap_volume
+                    fees24h = swap_fees
+                
+                # Calculate fees24h/volume24h ratio (swap fee rate)
+                volume_fees_ratio = fees24h / volume24h if volume24h > 0 else 0.0
+                
+                # Add calculated fields to snapshot
+                snapshot["volume24h"] = str(volume24h)
+                snapshot["fees24h"] = str(fees24h)
+                snapshot["volumeFeesRatio"] = volume_fees_ratio
         
         return snapshots
     

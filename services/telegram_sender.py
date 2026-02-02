@@ -120,15 +120,59 @@ class TelegramSender:
             
             # 3. Prepare Markdown Caption
             # Simple Markdown formatting for Telegram
-            caption = (
-                f"💎 *Pool Performance Update*\n"
-                f"*{metrics_data.get('pool_name', 'Unknown Pool')}*\n\n"
-                f"💰 *TVL:* {metrics_data.get('tvl_current', 'N/A')} ({metrics_data.get('tvl_change_percent', '0%')})\n"
-                f"📊 *Volume (15d):* {metrics_data.get('volume_15d', 'N/A')}\n"
-                f"💸 *Fees (15d):* {metrics_data.get('fees_15d', 'N/A')}\n"
-                f"🚀 *APR:* {metrics_data.get('apr_current', 'N/A')}\n\n"
+            caption_lines = [
+                f"💎 *Pool Performance Update*",
+                f"*{metrics_data.get('pool_name', 'Unknown Pool')}*\n",
+                f"💰 *TVL:* {metrics_data.get('tvl_current', 'N/A')} ({metrics_data.get('tvl_change_percent', '0%')})",
+                f"📊 *Volume (15d):* {metrics_data.get('volume_15d', 'N/A')}",
+                f"💸 *Fees (15d):* {metrics_data.get('fees_15d', 'N/A')}",
+                f"📈 *Swap Fee Rate (24h):* {metrics_data.get('volume_fees_ratio_24h', 'N/A')}",
+            ]
+            
+            # Add alert if swap fee changed (15 days comparison)
+            if metrics_data.get('volume_fees_ratio_has_changed'):
+                change_percent = metrics_data.get('volume_fees_ratio_change_percent', 'N/A')
+                value_15d = metrics_data.get('volume_fees_ratio_24h_15d_ago', 'N/A')
+                value_now = metrics_data.get('volume_fees_ratio_24h', 'N/A')
+                
+                if metrics_data.get('volume_fees_ratio_increased'):
+                    caption_lines.append("")
+                    caption_lines.append("✏️ *Parameter Changes*")
+                    caption_lines.append(f"SwapFee:")
+                    caption_lines.append(f"📈 Increased by {change_percent}")
+                    caption_lines.append(f"15 days ago: {value_15d} → Now: {value_now}")
+                elif metrics_data.get('volume_fees_ratio_decreased'):
+                    caption_lines.append("")
+                    caption_lines.append("✏️ *Parameter Changes*")
+                    caption_lines.append(f"SwapFee:")
+                    caption_lines.append(f"📉 Decreased by {change_percent}")
+                    caption_lines.append(f"15 days ago: {value_15d} → Now: {value_now}")
+            
+            # Add alert if swap fee changed vs 30-day average
+            if metrics_data.get('volume_fees_ratio_30d_has_changed'):
+                change_30d_percent = metrics_data.get('volume_fees_ratio_30d_change_percent', 'N/A')
+                avg_30d = metrics_data.get('volume_fees_ratio_30d_avg', 'N/A')
+                value_now_30d = metrics_data.get('volume_fees_ratio_24h', 'N/A')
+                
+                if metrics_data.get('volume_fees_ratio_30d_increased'):
+                    caption_lines.append("")
+                    caption_lines.append("✏️ *Parameter Changes*")
+                    caption_lines.append(f"SwapFee:")
+                    caption_lines.append(f"📈 Increased by {change_30d_percent} (vs 30d average)")
+                    caption_lines.append(f"30-day average: {avg_30d} → Now: {value_now_30d}")
+                elif metrics_data.get('volume_fees_ratio_30d_decreased'):
+                    caption_lines.append("")
+                    caption_lines.append("✏️ *Parameter Changes*")
+                    caption_lines.append(f"SwapFee:")
+                    caption_lines.append(f"📉 Decreased by {change_30d_percent} (vs 30d average)")
+                    caption_lines.append(f"30-day average: {avg_30d} → Now: {value_now_30d}")
+            
+            caption_lines.extend([
+                f"\n🚀 *APR:* {metrics_data.get('apr_current', 'N/A')}\n",
                 f"[🔗 View Pool on Balancer]({metrics_data.get('pool_url', '#')})"
-            )
+            ])
+            
+            caption = "\n".join(caption_lines)
 
             # 4. Send to Telegram
             print(f"✈️ Sending to Telegram Chat ID: {target_chat_id}...")
@@ -150,7 +194,10 @@ class TelegramSender:
                 os.remove(image_path)
                 
         except Exception as e:
-            print(f"❌ Error in TelegramSender: {str(e)}")
+            import traceback
+            error_msg = str(e) if str(e) else repr(e)
+            print(f"❌ Error in TelegramSender: {error_msg}")
+            print(f"   Traceback: {traceback.format_exc()}")
 
     async def send_multi_pool_report(self, metrics_data: dict, chat_id: str):
         """
@@ -164,6 +211,7 @@ class TelegramSender:
         """
         try:
             target_chat_id = chat_id
+            caption_lines = []  # Initialize early to avoid UnboundLocalError
             
             # If image generation is not available, send text-only message
             if not self.image_support:
@@ -176,19 +224,42 @@ class TelegramSender:
                     f"🚀 *Weighted Avg APR:* {metrics_data.get('total_apr', 'N/A')}",
                 ]
                 
-                top_vol = metrics_data.get("top_3_volume", [])[:3]
-                if top_vol:
+                # Show each pool with all its metrics (compact format with labels)
+                pools = metrics_data.get("pools", [])
+                if pools:
                     caption_lines.append("")
-                    caption_lines.append("🏆 *Top 3 by Trading Volume*")
-                    for p in top_vol:
-                        caption_lines.append(f"{p.get('rank')}. {p.get('name')} — {p.get('value')} ({p.get('percentage')} of total)")
-                
-                top_tvl = metrics_data.get("top_3_tvl", [])[:3]
-                if top_tvl:
-                    caption_lines.append("")
-                    caption_lines.append("💎 *Top 3 by TVL Growth*")
-                    for p in top_tvl:
-                        caption_lines.append(f"{p.get('rank')}. {p.get('name')} — {p.get('value')} ({p.get('percentage')})")
+                    for idx, pool in enumerate(pools, 1):
+                        # Compact format: Pool name on one line, metrics on next lines
+                        pool_name = pool.get('name', 'Unknown')
+                        # Truncate long pool names to avoid exceeding Telegram limit
+                        if len(pool_name) > 50:
+                            pool_name = pool_name[:47] + "..."
+                        caption_lines.append(f"*{idx}. {pool_name}*")
+                        caption_lines.append(
+                            f"💎 TVL: {pool.get('tvl')} ({pool.get('tvl_change')}) | "
+                            f"🏆 Vol: {pool.get('volume')} ({pool.get('volume_change')})"
+                        )
+                        caption_lines.append(
+                            f"🚀 APR: {pool.get('apr')} | "
+                            f"📈 Swap Fee: {pool.get('swap_fee')}"
+                        )
+                    
+                    # Add alerts for pools with significant swap fee changes (compact)
+                    pools_with_changes = [p for p in pools if p.get('swap_fee_changed', False)]
+                    if pools_with_changes:
+                        caption_lines.append("")
+                        caption_lines.append("✏️ *Parameter Changes*")
+                        for p in pools_with_changes:
+                            change_percent = p.get('swap_fee_change', 'N/A')
+                            if change_percent and change_percent != 'N/A':
+                                direction = "📈" if '+' in str(change_percent) else "📉"
+                                pool_name = p.get('name', 'Unknown')
+                                if len(pool_name) > 40:
+                                    pool_name = pool_name[:37] + "..."
+                                caption_lines.append(
+                                    f"{direction} {pool_name}: {change_percent} "
+                                    f"({p.get('swap_fee_15d_ago', 'N/A')} → {p.get('swap_fee', 'N/A')})"
+                                )
                 
                 caption = "\n".join(caption_lines)
                 await self.send_message(str(target_chat_id), caption)
@@ -205,7 +276,7 @@ class TelegramSender:
             self.hti.screenshot(html_str=html_content, save_as=image_filename)
             image_path = os.path.join("temp_images", image_filename)
 
-            # 3. Prepare Markdown Caption
+            # 3. Prepare Markdown Caption (compact format to avoid Telegram length limit)
             caption_lines = [
                 "📊 *Pools Comparison Update*",
                 f"*{metrics_data.get('pool_count', 0)} Pools • 15-Day Analysis*",
@@ -214,19 +285,42 @@ class TelegramSender:
                 f"🚀 *Weighted Avg APR:* {metrics_data.get('total_apr', 'N/A')}",
             ]
 
-            top_vol = metrics_data.get("top_3_volume", [])[:3]
-            if top_vol:
+            # Show each pool with all its metrics (compact format with labels)
+            pools = metrics_data.get("pools", [])
+            if pools:
                 caption_lines.append("")
-                caption_lines.append("🏆 *Top 3 by Trading Volume*")
-                for p in top_vol:
-                    caption_lines.append(f"{p.get('rank')}. {p.get('name')} — {p.get('value')} ({p.get('percentage')} of total)")
-
-            top_tvl = metrics_data.get("top_3_tvl", [])[:3]
-            if top_tvl:
-                caption_lines.append("")
-                caption_lines.append("💎 *Top 3 by TVL Growth*")
-                for p in top_tvl:
-                    caption_lines.append(f"{p.get('rank')}. {p.get('name')} — {p.get('value')} ({p.get('percentage')})")
+                for idx, pool in enumerate(pools, 1):
+                    # Compact format: Pool name on one line, metrics on next lines
+                    pool_name = pool.get('name', 'Unknown')
+                    # Truncate long pool names to avoid exceeding Telegram limit
+                    if len(pool_name) > 50:
+                        pool_name = pool_name[:47] + "..."
+                    caption_lines.append(f"*{idx}. {pool_name}*")
+                    caption_lines.append(
+                        f"💎 TVL: {pool.get('tvl')} ({pool.get('tvl_change')}) | "
+                        f"🏆 Vol: {pool.get('volume')} ({pool.get('volume_change')})"
+                    )
+                    caption_lines.append(
+                        f"🚀 APR: {pool.get('apr')} | "
+                        f"📈 Swap Fee: {pool.get('swap_fee')}"
+                    )
+                
+                # Add alerts for pools with significant swap fee changes (compact)
+                pools_with_changes = [p for p in pools if p.get('swap_fee_changed', False)]
+                if pools_with_changes:
+                    caption_lines.append("")
+                    caption_lines.append("✏️ *Parameter Changes*")
+                    for p in pools_with_changes:
+                        change_percent = p.get('swap_fee_change', 'N/A')
+                        if change_percent and change_percent != 'N/A':
+                            direction = "📈" if '+' in str(change_percent) else "📉"
+                            pool_name = p.get('name', 'Unknown')
+                            if len(pool_name) > 40:
+                                pool_name = pool_name[:37] + "..."
+                            caption_lines.append(
+                                f"{direction} {pool_name}: {change_percent} "
+                                f"({p.get('swap_fee_15d_ago', 'N/A')} → {p.get('swap_fee', 'N/A')})"
+                            )
 
             caption = "\n".join(caption_lines)
 
@@ -250,4 +344,7 @@ class TelegramSender:
                 os.remove(image_path)
 
         except Exception as e:
-            print(f"❌ Error in TelegramSender (multi-pool): {str(e)}")
+            import traceback
+            error_msg = str(e) if str(e) else repr(e)
+            print(f"❌ Error in TelegramSender (multi-pool): {error_msg}")
+            print(f"   Traceback: {traceback.format_exc()}")

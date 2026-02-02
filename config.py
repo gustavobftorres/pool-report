@@ -44,6 +44,10 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
+    # Dune API Configuration
+    dune_api_key: str | None = None
+    dune_query_performance: str = "medium"  # "low", "medium", "high"
+    dune_query_timeout: float = 60.0
 
 # Global settings instance
 settings = Settings()
