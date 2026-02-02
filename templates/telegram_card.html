@@ -168,7 +168,7 @@
         </tr>
         
         <tr>
-            <td style="padding: 0 45px 45px;">
+            <td style="padding: 0 45px 30px;">
                 <div style="padding: 30px; background: linear-gradient(135deg, #E5D1B9 0%, #D4C8A8 100%); border-radius: 16px; border: 2px solid #E5D1B9; display: flex; justify-content: space-between; align-items: center;">
                     <div>
                         <p style="color: #31363F; font-size: 14px !important; font-weight: 800; text-transform: uppercase; margin: 0 0 5px;">🚀 Current APR</p>
@@ -178,6 +178,84 @@
                 </div>
             </td>
         </tr>
+        
+        <tr>
+            <td style="padding: 0 45px 30px;">
+                <div style="padding: 25px; background-color: #5B6068; border-radius: 12px; border: 2px solid #BAB3F3;">
+                    <p style="margin: 0 0 10px; color: #BAB3F3; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">
+                        📈 SWAP FEE RATE (24H)
+                    </p>
+                    <h4 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: -0.5px;">
+                        {{ volume_fees_ratio_24h }}
+                    </h4>
+                    <p style="margin: 10px 0 0; color: #8d929b; font-size: 13px !important;">
+                        Fees 24h / Volume 24h
+                    </p>
+                </div>
+            </td>
+        </tr>
+        
+        {% if volume_fees_ratio_has_changed %}
+        <tr>
+            <td style="padding: 0 45px 45px;">
+                <div style="padding: 20px; background-color: {% if volume_fees_ratio_increased %}rgba(74, 222, 128, 0.15){% else %}rgba(248, 113, 113, 0.15){% endif %}; border-radius: 12px; border: 2px solid {% if volume_fees_ratio_increased %}#4ade80{% else %}#f87171{% endif %};">
+                    <table width="100%">
+                        <tr>
+                            <td style="vertical-align: middle;">
+                                <p style="margin: 0 0 5px; color: {% if volume_fees_ratio_increased %}#4ade80{% else %}#f87171{% endif %}; font-size: 14px !important; font-weight: 800; text-transform: uppercase;">
+                                    ✏️ Parameter Changes
+                                </p>
+                                <p style="margin: 0 0 8px; color: {% if volume_fees_ratio_increased %}#4ade80{% else %}#f87171{% endif %}; font-size: 14px !important; font-weight: 600;">
+                                    SwapFee:
+                                </p>
+                                <p style="margin: 0; color: {% if volume_fees_ratio_increased %}#4ade80{% else %}#f87171{% endif %}; font-size: 16px !important; font-weight: 700;">
+                                    {% if volume_fees_ratio_increased %}
+                                        📈 Increased by {{ volume_fees_ratio_change_percent }}
+                                    {% else %}
+                                        📉 Decreased by {{ volume_fees_ratio_change_percent }}
+                                    {% endif %}
+                                </p>
+                                <p style="margin: 8px 0 0; color: #8d929b; font-size: 12px !important;">
+                                    15 days ago: {{ volume_fees_ratio_24h_15d_ago }} → Now: {{ volume_fees_ratio_24h }}
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </td>
+        </tr>
+        {% endif %}
+        
+        {% if volume_fees_ratio_30d_has_changed %}
+        <tr>
+            <td style="padding: 0 45px 45px;">
+                <div style="padding: 20px; background-color: {% if volume_fees_ratio_30d_increased %}rgba(74, 222, 128, 0.15){% else %}rgba(248, 113, 113, 0.15){% endif %}; border-radius: 12px; border: 2px solid {% if volume_fees_ratio_30d_increased %}#4ade80{% else %}#f87171{% endif %};">
+                    <table width="100%">
+                        <tr>
+                            <td style="vertical-align: middle;">
+                                <p style="margin: 0 0 5px; color: {% if volume_fees_ratio_30d_increased %}#4ade80{% else %}#f87171{% endif %}; font-size: 14px !important; font-weight: 800; text-transform: uppercase;">
+                                    ✏️ Parameter Changes
+                                </p>
+                                <p style="margin: 0 0 8px; color: {% if volume_fees_ratio_30d_increased %}#4ade80{% else %}#f87171{% endif %}; font-size: 14px !important; font-weight: 600;">
+                                    SwapFee:
+                                </p>
+                                <p style="margin: 0; color: {% if volume_fees_ratio_30d_increased %}#4ade80{% else %}#f87171{% endif %}; font-size: 16px !important; font-weight: 700;">
+                                    {% if volume_fees_ratio_30d_increased %}
+                                        📈 Increased by {{ volume_fees_ratio_30d_change_percent }} (vs 30d average)
+                                    {% else %}
+                                        📉 Decreased by {{ volume_fees_ratio_30d_change_percent }} (vs 30d average)
+                                    {% endif %}
+                                </p>
+                                <p style="margin: 8px 0 0; color: #8d929b; font-size: 12px !important;">
+                                    30-day average: {{ volume_fees_ratio_30d_avg }} → Now: {{ volume_fees_ratio_24h }}
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </td>
+        </tr>
+        {% endif %}
         
         <tr>
             <td style="padding: 30px 45px; background-color: #4a4e57; border-top: 2px solid #BAB3F3;">

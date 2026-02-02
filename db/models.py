@@ -108,6 +108,13 @@ class PoolMetrics(BaseModel):
     fees_15_days: float
     fees_change_percent: float
     
+    volume_fees_ratio_24h: float | None = None  # fees24h/volume24h ratio (swap fee rate)
+    volume_fees_ratio_24h_15d_ago: float | None = None  # fees24h/volume24h ratio 15 days ago
+    volume_fees_ratio_change_percent: float | None = None  # percentage change in ratio (15d comparison)
+    volume_fees_ratio_30d_avg: float | None = None  # 30-day average swap fee rate
+    volume_fees_ratio_30d_change: float | None = None  # absolute change from 30-day average
+    volume_fees_ratio_30d_change_percent: float | None = None  # percentage change from 30-day average
+    
     apr_current: float | None = None
     
     pool_name: str
@@ -136,6 +143,7 @@ class MultiPoolMetrics(BaseModel):
     # Rankings
     top_3_by_volume: list[tuple[str, float, float, str | None]]  # (pool_name, volume, percentage_of_total, pool_url)
     top_3_by_tvl: list[tuple[str, float, float, str | None]]     # (pool_name, tvl_increase, percentage_change, pool_url)
+    top_3_by_swap_fee: list[tuple[str, float, float | None, str | None, bool, float | None]]  # (pool_name, volume_fees_ratio_24h, change_percent, pool_url, has_changed, value_15d_ago)
     
     # Custom configurable rankings
     custom_rankings: dict[str, list[tuple[str, float, str | None]]] = {}  # {metric_name: [(pool_name, value, pool_url)]}

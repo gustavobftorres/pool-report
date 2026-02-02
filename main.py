@@ -264,8 +264,19 @@ async def setup_telegram_webhook(webhook_url: str):
     Call this once to register your webhook endpoint with Telegram.
     
     Example: POST /telegram/setup-webhook?webhook_url=https://your-domain.com/telegram/webhook
+    
+    Note: If you provide just the base URL (e.g., https://your-domain.com), 
+    it will automatically append /telegram/webhook
     """
     try:
+        # Normalize webhook URL: ensure it ends with /telegram/webhook
+        webhook_url = webhook_url.strip()
+        if not webhook_url.endswith("/telegram/webhook"):
+            # Remove trailing slash if present
+            webhook_url = webhook_url.rstrip("/")
+            # Append the webhook path
+            webhook_url = f"{webhook_url}/telegram/webhook"
+        
         telegram_api = f"https://api.telegram.org/bot{settings.telegram_bot_token}/setWebhook"
         async with httpx.AsyncClient() as client:
             response = await client.post(telegram_api, json={"url": webhook_url})
