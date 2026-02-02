@@ -104,55 +104,73 @@
             </td>
         </tr>
 
+        {% for pool in pools %}
         <tr>
-            <td style="padding: 0 45px 26px;">
+            <td style="padding: 0 45px {% if loop.last %}45{% else %}26{% endif %}px;">
                 <div class="metric-box">
-                    <p class="row-title">🏆 Top 3 by Trading Volume</p>
-                    {% for pool in top_3_volume %}
+                    <p class="row-title">Pool {{ loop.index }}: {{ pool.name }}</p>
                     <table width="100%" style="margin-bottom: 12px;">
                         <tr>
-                            <td width="10%" valign="middle">
-                                <span class="pill">{{ pool.rank }}</span>
-                            </td>
-                            <td width="60%" valign="middle">
-                                <p style="color:#E5D1B9; font-weight: 800; font-size: 15px !important; margin:0;">{{ pool.name }}</p>
-                                <p style="color:#BAB3F3; font-weight: 700; font-size: 12px !important; margin-top:6px;">{{ pool.percentage }} of total</p>
-                            </td>
-                            <td width="30%" valign="middle" style="text-align:right;">
-                                <p style="color:#E5D1B9; font-weight: 900; font-size: 16px !important;">{{ pool.value }}</p>
-                            </td>
-                        </tr>
-                    </table>
-                    {% endfor %}
-                </div>
-            </td>
-        </tr>
-
-        <tr>
-            <td style="padding: 0 45px 45px;">
-                <div class="metric-box">
-                    <p class="row-title">💎 Top 3 by TVL Growth</p>
-                    {% for pool in top_3_tvl %}
-                    <table width="100%" style="margin-bottom: 12px;">
-                        <tr>
-                            <td width="10%" valign="middle">
-                                <span class="pill">{{ pool.rank }}</span>
-                            </td>
-                            <td width="60%" valign="middle">
-                                <p style="color:#E5D1B9; font-weight: 800; font-size: 15px !important; margin:0;">{{ pool.name }}</p>
-                                <p style="color:{% if pool.percentage.startswith('+') %}#4ade80{% else %}#f87171{% endif %}; font-weight: 900; font-size: 12px !important; margin-top:6px;">
-                                    {{ pool.percentage }}
+                            <td width="50%" valign="top" style="padding-right: 10px;">
+                                <p style="color:#BAB3F3; font-weight: 800; font-size: 11px !important; text-transform: uppercase; margin:0 0 4px !important;">💎 TVL</p>
+                                <p style="color:#E5D1B9; font-weight: 900; font-size: 18px !important; margin:0 0 8px;">{{ pool.tvl }}</p>
+                                <p style="color:{% if pool.tvl_change.startswith('+') %}#4ade80{% else %}#f87171{% endif %}; font-weight: 700; font-size: 12px !important; margin:0;">
+                                    {{ pool.tvl_change }}
                                 </p>
                             </td>
-                            <td width="30%" valign="middle" style="text-align:right;">
-                                <p style="color:#E5D1B9; font-weight: 900; font-size: 16px !important;">{{ pool.value }}</p>
+                            <td width="50%" valign="top" style="padding-left: 10px;">
+                                <p style="color:#BAB3F3; font-weight: 800; font-size: 11px !important; text-transform: uppercase; margin:0 0 4px !important;">🏆 Volume</p>
+                                <p style="color:#E5D1B9; font-weight: 900; font-size: 18px !important; margin:0 0 8px;">{{ pool.volume }}</p>
+                                <p style="color:{% if pool.volume_change.startswith('+') %}#4ade80{% else %}#f87171{% endif %}; font-weight: 700; font-size: 12px !important; margin:0;">
+                                    {{ pool.volume_change }}
+                                </p>
                             </td>
                         </tr>
                     </table>
+                    <table width="100%" style="margin-top: 16px;">
+                        <tr>
+                            <td width="50%" valign="top" style="padding-right: 10px;">
+                                <p style="color:#BAB3F3; font-weight: 800; font-size: 11px !important; text-transform: uppercase; margin:0 0 4px !important;">🚀 APR</p>
+                                <p style="color:#E5D1B9; font-weight: 900; font-size: 18px !important; margin:0;">{{ pool.apr }}</p>
+                            </td>
+                            <td width="50%" valign="top" style="padding-left: 10px;">
+                                <p style="color:#BAB3F3; font-weight: 800; font-size: 11px !important; text-transform: uppercase; margin:0 0 4px !important;">📈 Swap Fee</p>
+                                <p style="color:#E5D1B9; font-weight: 900; font-size: 18px !important; margin:0;">{{ pool.swap_fee }}</p>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+
+        {% set pools_with_changes = pools | selectattr('swap_fee_changed') | list %}
+        {% if pools_with_changes %}
+        <tr>
+            <td style="padding: 0 45px 30px;">
+                <div class="metric-box" style="border-color: {% if pools_with_changes | length > 0 %}#f87171{% else %}#BAB3F3{% endif %};">
+                    <p class="row-title" style="color: {% if pools_with_changes | length > 0 %}#f87171{% else %}#E5D1B9{% endif %};">✏️ Parameter Changes</p>
+                    {% for pool in pools_with_changes %}
+                    <table width="100%" style="margin-bottom: 12px;">
+                        <tr>
+                            <td valign="top">
+                                <p style="color:#E5D1B9; font-weight: 800; font-size: 14px !important; margin:0 0 4px;">SwapFee:</p>
+                                <p style="color:#E5D1B9; font-weight: 700; font-size: 13px !important; margin:0 0 2px;">{{ pool.name }}</p>
+                                <p style="color:{% if pool.swap_fee_change and '+' in pool.swap_fee_change %}#4ade80{% else %}#f87171{% endif %}; font-weight: 800; font-size: 12px !important; margin:0;">
+                                    {% if pool.swap_fee_change and '+' in pool.swap_fee_change %}📈 Increased{% else %}📉 Decreased{% endif %} by {{ pool.swap_fee_change }}
+                                </p>
+                                <p style="color:#BAB3F3; font-weight: 600; font-size: 11px !important; margin-top:4px;">
+                                    15 days ago: {{ pool.swap_fee_15d_ago }} → Now: {{ pool.swap_fee }}
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                    {% if not loop.last %}<hr style="border: none; border-top: 1px solid #5B6068; margin: 12px 0;">{% endif %}
                     {% endfor %}
                 </div>
             </td>
         </tr>
+        {% endif %}
 
         <tr>
             <td style="padding: 30px 45px; background-color: #4a4e57; border-top: 2px solid #BAB3F3;">
