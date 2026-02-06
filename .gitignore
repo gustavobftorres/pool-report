@@ -58,3 +58,6 @@ temp_images/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Media
+*.pdf
