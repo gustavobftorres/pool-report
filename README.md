@@ -113,7 +113,7 @@ TELEGRAM_CHAT_ID=your_default_chat_id    # Optional: Default chat ID for reports
 
 # Dune Analytics (for anchor token volume data)
 DUNE_API_KEY=your_dune_api_key
-DUNE_ANCHOR_VOLUME_QUERY_ID=your_query_id  # See ANCHOR_TOKEN_SETUP.md for SQL template
+DUNE_ANCHOR_VOLUME_QUERY_ID=6664013
 DUNE_QUERY_PERFORMANCE=medium              # Options: low, medium, high
 DUNE_QUERY_TIMEOUT=60.0
 
@@ -427,15 +427,6 @@ PYTHONPATH=. ./venv/bin/pytest tests/test_anchor*.py -v
 - ✅ Multi-pool aggregation
 - ✅ Token symbol resolution
 - ✅ CSV export functionality
-
-## Deployment
-
-See **[DEPLOYMENT.md](DEPLOYMENT.md)** for comprehensive deployment instructions.
-
-## Documentation
-
-- **[ANCHOR_TOKEN_SETUP.md](ANCHOR_TOKEN_SETUP.md)** - Complete guide for setting up Dune Analytics queries
-- **[ANCHOR_TOKEN_IMPROVEMENTS.md](ANCHOR_TOKEN_IMPROVEMENTS.md)** - Feature documentation and implementation details
 
 ## Support
 
