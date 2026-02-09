@@ -61,3 +61,7 @@ temp_images/
 
 # Media
 *.pdf
+*.csv
+
+# Personal
+AI_Agent_files

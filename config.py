@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     dune_api_key: str | None = None
     dune_query_performance: str = "medium"  # "low", "medium", "high"
     dune_query_timeout: float = 60.0
+    dune_anchor_volume_query_id: int | None = None
     
     # Optional default pool
     default_pool_address: str | None = None

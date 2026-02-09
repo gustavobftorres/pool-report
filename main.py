@@ -15,6 +15,7 @@ from services.metrics_calculator import MetricsCalculator
 from services.email_sender import EmailSender, EmailSenderError
 from services.balancer_api import BalancerAPIError
 from services.telegram_sender import TelegramSender
+from services.anchor_token_info import AnchorTokenInfo
 from config import settings
 
 
@@ -302,7 +303,36 @@ async def generate_report(request: ReportRequest):
         
         # Determine if single or multiple pools
         is_multi_pool = len(pool_addresses) > 1
-        
+
+        # Get anchor token information
+        anchor_service = AnchorTokenInfo()
+        anchor_data = None
+        try:
+            anchor_address = request.anchor_token_address.lower()
+            # Default to ethereum for anchor token lookup if not detectable from first pool
+            blockchain = "ethereum"
+            try:
+                first_pool_data = await calculator.api.get_current_pool_data(pool_addresses[0])
+                blockchain = first_pool_data.get("_blockchain", "ethereum")
+            except:
+                pass
+
+            print(f"⚓ Retrieving info for anchor token: {anchor_address}")
+            # get_token_data handles CSV saving internally if debug=True
+            anchor_df = await anchor_service.get_token_data(anchor_address, blockchain, debug=True)
+            
+            # Get summary stats to include in report
+            if not anchor_df.empty:
+                anchor_data = {
+                    "token_address": anchor_address,
+                    "token_symbol": anchor_service._resolve_token_symbol(anchor_address),
+                    "stats": anchor_service.get_summary_stats(anchor_df),
+                    "top_market": anchor_df.iloc[0].to_dict() if len(anchor_df) > 0 else None
+                }
+            
+        except Exception as e:
+            print(f"⚠️ Could not retrieve anchor token info: {str(e)}")
+
         if is_multi_pool:
             # ---------------------------------------------------------
             # MULTI-POOL: Email summary report
@@ -324,6 +354,10 @@ async def generate_report(request: ReportRequest):
             
             # Format metrics for email
             metrics_data = calculator.format_multi_pool_metrics_for_email(multi_metrics)
+            
+            # Add anchor token info if available
+            if anchor_data:
+                metrics_data["anchor_token"] = anchor_data
             
             # Fetch per-pool data for insights (pool types, tokens, etc.)
             # This is used only by the insights pipeline, not by the email templates.
@@ -400,6 +434,10 @@ async def generate_report(request: ReportRequest):
             metrics_data["pool_id"] = pool_id
             metrics_data["pool_url"] = pool_url_link
             metrics_data["timestamp"] = current_time
+            
+            # Add anchor token info if available
+            if anchor_data:
+                metrics_data["anchor_token"] = anchor_data
             
             # Send email
             if request.recipient_email and email_sender.enabled:

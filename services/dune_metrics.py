@@ -232,11 +232,20 @@ class DuneMetricsService:
                 f"Executing Dune query {query_id} ({metric_group}) for pool {pool_address}"
             )
 
-            # Build params - comparative_positioning needs main_token_symbol
+            # Build params
             params = {
                 "blockchain": blockchain,
-                "pool_address": pool_address.lower(),
             }
+            
+            # Standard queries use pool_address, anchor_volume uses token_address
+            if metric_group == "anchor_volume":
+                params["token_address"] = pool_address.lower()
+                if main_token_symbol:
+                    params["token_symbol_placeholder"] = main_token_symbol
+            else:
+                params["pool_address"] = pool_address.lower()
+                
+            # comparative_positioning needs main_token_symbol
             if metric_group == "comparative_positioning" and main_token_symbol:
                 params["main_token_symbol"] = main_token_symbol
 

@@ -19,11 +19,16 @@ class RankingMetric(str, Enum):
 class ReportRequest(BaseModel):
     """Request model for generating a pool report (single or multiple pools)."""
     
-    pool_addresses: list[str] | None = Field(
-        default=None,
+    pool_addresses: list[str] = Field(
+        ...,
         description="List of Ethereum addresses of Balancer pools (1 or more)",
         examples=[["0x3de27efa2f1aa663ae5d458857e731c129069f29"]],
         min_length=1
+    )
+    anchor_token_address: str = Field(
+        ...,
+        description="Anchor token address for performance comparison (e.g. USDC)",
+        examples=["0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"]
     )
     user_id: int | None = Field(
         default=None,

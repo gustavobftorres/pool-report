@@ -1,10 +1,19 @@
 # Balancer Pool Performance Reporter
 
-A FastAPI-based web service that generates and emails performance reports for Balancer v2/v3 liquidity pools. The service queries Balancer's GraphQL APIs to fetch pool metrics, compares current performance with data from 15 days ago, and sends beautifully styled reports via email and Telegram with visual change indicators and adaptive precision formatting.
+A FastAPI-based web service that generates performance reports for Balancer v2/v3 liquidity pools and anchor token lending markets. The service queries Balancer's GraphQL APIs to fetch pool metrics, compares current performance with data from 15 days ago, and sends beautifully styled reports via Telegram with visual change indicators and adaptive precision formatting.
+
+## Key Features
+
+- 📊 **Pool Performance Tracking**: Compare pool metrics (TVL, volume, fees, APR) with 15-day historical data
+- ⚓ **Anchor Token Analysis**: Track lending market APYs and trading volumes for anchor tokens (USDC, WETH, etc.)
+- 📈 **Multi-Pool Comparisons**: Analyze multiple pools with customizable ranking metrics
+- 🤖 **Telegram Integration**: Receive formatted reports with visual cards directly in Telegram
+- 💾 **CSV Export**: Generate CSV reports for anchor token lending markets (992+ markets tracked)
+- 🔍 **Dune Analytics Integration**: Historical volume data from on-chain DEX aggregators
 
 ## Metrics Tracked
 
-### Core Metrics (All Pools)
+### Pool Performance Metrics
 - **Pool Type**: Weighted, Stable, Boosted, etc.
 - **Swap Fee**: Trading fee percentage (up to 4 decimal precision for low-fee pools)
 - **TVL (Total Value Locked)**: Current vs 15 days ago with % change
@@ -17,6 +26,13 @@ A FastAPI-based web service that generates and emails performance reports for Ba
 - **Boosted APR** (Boosted pools): Yield from underlying yield-bearing tokens
 - **Rebalance Count** (Gyro/LVR pools): Number of rebalances in 15 days (when available)
 - **Surge Fees** (Stable Surge pools): Dynamic fee adjustments (when available)
+
+### Anchor Token Metrics (NEW)
+- **Lending Markets**: APYs from 990+ lending protocols (Aave, Morpho, Compound, etc.)
+- **Trading Volume**: 30-day Balancer swap volume by chain/version/pair (via Dune Analytics)
+- **Best Market Identification**: Automatically identifies highest-yield lending opportunity
+- **CSV Export**: Generates `anchor_token_info.csv` with complete market data
+- **Supported Tokens**: USDC, WETH, wstETH, DAI, USDT, WBTC, rETH, cbETH (extensible)
 
 ## Installation
 
@@ -84,13 +100,6 @@ This will create the required database tables (`users` and `user_pools`).
 Edit the `.env` file with your settings:
 
 ```env
-# SMTP Configuration (use Gmail, Outlook, or custom SMTP)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USERNAME=your_email@gmail.com
-SMTP_PASSWORD=your_app_password
-FROM_EMAIL=your_email@gmail.com
-
 # Balancer APIs
 BALANCER_V3_API=https://api-v3.balancer.fi/
 BALANCER_V2_SUBGRAPH=https://api.studio.thegraph.com/query/24617/balancer-v2
@@ -98,9 +107,15 @@ BALANCER_GQL_ENDPOINT=https://gateway-arbitrum.network.thegraph.com/api/YOUR_API
 DEFAULT_CHAIN=MAINNET          # For API queries (MAINNET, ARBITRUM, POLYGON, etc.)
 BLOCKCHAIN_NAME=ethereum       # For balancer.fi URLs (ethereum, arbitrum, polygon, etc.)
 
-# Telegram Integration (Optional)
+# Telegram Integration (Required)
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 TELEGRAM_CHAT_ID=your_default_chat_id    # Optional: Default chat ID for reports
+
+# Dune Analytics (for anchor token volume data)
+DUNE_API_KEY=your_dune_api_key
+DUNE_ANCHOR_VOLUME_QUERY_ID=your_query_id  # See ANCHOR_TOKEN_SETUP.md for SQL template
+DUNE_QUERY_PERFORMANCE=medium              # Options: low, medium, high
+DUNE_QUERY_TIMEOUT=60.0
 
 # Database Configuration
 DATABASE_URL=postgresql://user:password@localhost:5432/pool_report
@@ -116,12 +131,17 @@ postgresql://username:password@host:port/database_name
 - `BLOCKCHAIN_NAME`: Used for generating balancer.fi URLs (e.g., `ethereum`, `arbitrum`, `polygon`)
 - Both should represent the same network, just in different formats
 
-### Gmail SMTP Setup (Optional)
+### Dune Analytics Setup (for Anchor Token Volume)
 
-If using Gmail, you'll need to:
-1. Enable 2-factor authentication
-2. Generate an "App Password" at https://myaccount.google.com/apppasswords
-3. Use the app password in the `.env` file
+To enable historical volume tracking for anchor tokens:
+
+1. Create a free account at [dune.com](https://dune.com)
+2. Get your API key from [dune.com/settings/api](https://dune.com/settings/api)
+3. Create a new query using the SQL template in `ANCHOR_TOKEN_SETUP.md`
+4. Copy the Query ID from the URL (e.g., `https://dune.com/queries/123456` → ID is `123456`)
+5. Add both to your `.env` file
+
+**Note:** Volume tracking will be skipped if Dune credentials are not configured. Lending market data (DefiLlama) works independently.
 
 ### Telegram Bot Setup 
 
@@ -228,23 +248,33 @@ FastAPI provides automatic interactive documentation:
 - **ReDoc**: http://localhost:8000/redoc
 - **Admin Dashboard**: http://localhost:8501
 
-### Generate a Single Pool Report
+### Generate a Single Pool Report with Anchor Token Analysis
 
-Send a POST request to `/report` with one pool.
+Send a POST request to `/report` with one pool and an anchor token address.
 
 For single-pool requests, the service:
-- Sends an HTML email report to the configured `recipient_email`
-- Sends a Telegram image card + markdown summary to the specified chat ID (if provided) or default chat ID
+- Fetches pool performance metrics (15-day comparison)
+- Retrieves anchor token lending markets and trading volume
+- Generates CSV export with complete anchor token data
+- Sends a Telegram image card + markdown summary with anchor token info
 
 ```bash
 curl -X POST "http://localhost:8000/report" \
   -H "Content-Type: application/json" \
   -d '{
     "pool_addresses": ["0x3de27efa2f1aa663ae5d458857e731c129069f29"],
+    "anchor_token_address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
     "recipient_email": "your.email@example.com",
     "telegram_chat_id": "123456789"
   }'
 ```
+
+**Common Anchor Token Addresses (Ethereum Mainnet):**
+- USDC: `0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48`
+- WETH: `0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2`
+- wstETH: `0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0`
+
+**Output:** Creates `anchor_token_info.csv` in project root with 990+ lending markets
 
 **Note:** `telegram_chat_id` is optional. If omitted, the default `TELEGRAM_CHAT_ID` from `.env` is used (if configured).
 
@@ -254,11 +284,14 @@ curl -X POST "http://localhost:8000/report" \
 
 ### Generate a Multi-Pool Comparison Report
 
-Send a POST request with multiple pools.
+Send a POST request with multiple pools and an anchor token.
 
 For multi-pool requests, the service:
-- Sends an HTML summary email report to the configured `recipient_email`
-- Sends a Telegram image card + markdown summary to the specified chat ID (if provided) or default chat ID
+- Aggregates metrics across all pools
+- Compares pools using customizable ranking criteria
+- Includes anchor token lending market analysis
+- Generates CSV export with anchor token data
+- Sends a Telegram image card + markdown summary with rankings and anchor info
 
 ```bash
 curl -X POST "http://localhost:8000/report" \
@@ -269,6 +302,7 @@ curl -X POST "http://localhost:8000/report" \
       "0x5c6ee304399dbdb9c8ef030ab642b10820db8f56",
       "0x96646936b91d6b9d7d0c47c496afbf3d6ec7b6f8"
     ],
+    "anchor_token_address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
     "recipient_email": "your.email@example.com",
     "telegram_chat_id": "123456789"
   }'
@@ -279,6 +313,8 @@ curl -X POST "http://localhost:8000/report" \
 - 💎 Top 3 pools by TVL Growth (absolute increase + % change from 15 days ago)
 - 💰 Total Fees collected (all pools combined)
 - 🚀 Weighted Average APR (by TVL)
+- ⚓ Anchor Token best lending market (protocol + APY)
+- 📊 Number of lending markets tracked
 
 ### Multi-Pool with Custom Rankings
 
@@ -306,6 +342,25 @@ curl -X POST "http://localhost:8000/report" \
 
 Or use the interactive Swagger UI at `/docs` to test the endpoint.
 
+### Generate Anchor Token CSV Only
+
+To generate just the CSV file with anchor token data (no Telegram report):
+
+```bash
+cd /home/kaique/Documents/Projetos/pool-report
+echo -e "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\nethereum" | \
+  PYTHONPATH=. ./venv/bin/python tests/interactive_anchor_test.py
+```
+
+**Output:** `anchor_token_info.csv` with columns:
+- `protocol` - Lending protocol name (e.g., Aave V3, Morpho, Compound)
+- `chain` - Blockchain network
+- `symbol` - Market token symbol
+- `apy` - Annual Percentage Yield (%)
+- `tvl_usd` - Total Value Locked in USD
+- `reward_tokens` - Additional reward tokens (if any)
+- `pool_id` - Protocol-specific pool identifier
+
 ## User Management System
 
 ### Admin Dashboard
@@ -316,10 +371,12 @@ Access the Streamlit admin UI at `http://localhost:8501` to manage users and the
 
 - `/start` - Register and get your user ID
 - `/myid` - Get your user ID and see how many pools are assigned
-- 
-**Optional Fields:**
-- `telegram_chat_id` (string): Telegram chat ID to send report to (overrides env variable)
-- `ranking_by` (array): Metrics to rank by in multi-pool reports (default: `["volume", "tvl_growth"]`)
+**Request Fields:**
+- `pool_addresses` (array, required): List of Balancer pool addresses
+- `anchor_token_address` (string, required): Anchor token address for analysis
+- `recipient_email` (string, required): Email address (used for record-keeping)
+- `telegram_chat_id` (string, optional): Telegram chat ID to send report to (overrides env variable)
+- `ranking_by` (array, optional): Metrics to rank by in multi-pool reports (default: `["volume", "tvl_growth"]`)
 
 ## Project Structure
 
@@ -334,21 +391,51 @@ pool-report/
 ├── services/
 │   ├── balancer_api.py            # GraphQL queries to Balancer APIs
 │   ├── metrics_calculator.py      # Metrics comparison logic
-│   ├── email_sender.py            # SMTP email sending
-│   └── telegram_sender.py         # Telegram card generation and sending
+│   ├── telegram_sender.py         # Telegram card generation and sending
+│   ├── anchor_token_info.py       # NEW: Anchor token lending & volume data
+│   ├── dune_metrics.py            # Dune Analytics integration
+│   └── insights_generator.py      # AI-powered insights generation
 ├── templates/
-│   ├── email_report.html          # Single pool email template
-│   ├── email_report_multi.html    # Multi-pool comparison email template
-│   ├── telegram_card.html         # Single pool Telegram card template
-│   └── telegram_card_multi.html   # Multi-pool Telegram card template
+│   ├── telegram_card.html         # Single pool Telegram card (with anchor info)
+│   └── telegram_card_multi.html   # Multi-pool Telegram card (with anchor info)
+├── tests/
+│   ├── test_anchor_token_info.py  # Unit tests for anchor token service
+│   ├── test_anchor_integration.py # Integration tests
+│   └── interactive_anchor_test.py # Manual testing script (generates CSV)
 ├── requirements.txt               # Python dependencies
 ├── .env                           # Environment variables (create this)
+├── ANCHOR_TOKEN_SETUP.md          # Dune Analytics query setup guide
+├── ANCHOR_TOKEN_IMPROVEMENTS.md   # Feature documentation
 └── README.md                      # This file
 ```
+
+## Testing
+
+### Run All Tests
+```bash
+PYTHONPATH=. ./venv/bin/pytest -v
+```
+
+### Run Anchor Token Tests Only
+```bash
+PYTHONPATH=. ./venv/bin/pytest tests/test_anchor*.py -v
+```
+
+**Current Test Coverage:**
+- ✅ 11 anchor token tests (unit + integration)
+- ✅ Pool metrics calculation
+- ✅ Multi-pool aggregation
+- ✅ Token symbol resolution
+- ✅ CSV export functionality
 
 ## Deployment
 
 See **[DEPLOYMENT.md](DEPLOYMENT.md)** for comprehensive deployment instructions.
+
+## Documentation
+
+- **[ANCHOR_TOKEN_SETUP.md](ANCHOR_TOKEN_SETUP.md)** - Complete guide for setting up Dune Analytics queries
+- **[ANCHOR_TOKEN_IMPROVEMENTS.md](ANCHOR_TOKEN_IMPROVEMENTS.md)** - Feature documentation and implementation details
 
 ## Support
 
