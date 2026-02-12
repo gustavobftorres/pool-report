@@ -151,10 +151,66 @@ async def telegram_webhook(request: Request, db = Depends(get_notion_db)):
                         metrics_data["pool_url"] = pool_url_link
                         metrics_data["timestamp"] = current_time
 
+                        # Add anchor token, hold vs pool, parameter changes (same as /report API)
+                        anchor_data = None
+                        if settings.default_anchor_token_address:
+                            try:
+                                anchor_service = AnchorTokenInfo()
+                                anchor_df = await anchor_service.get_token_data(
+                                    settings.default_anchor_token_address, blockchain, debug=False
+                                )
+                                if not anchor_df.empty:
+                                    anchor_data = {
+                                        "token_address": settings.default_anchor_token_address,
+                                        "token_symbol": anchor_service._resolve_token_symbol(settings.default_anchor_token_address),
+                                        "stats": anchor_service.get_summary_stats(anchor_df),
+                                        "top_market": anchor_df.iloc[0].to_dict() if len(anchor_df) > 0 else None
+                                    }
+                                    metrics_data["anchor_token"] = anchor_data
+                            except Exception as e:
+                                print(f"⚠️  Anchor token fetch failed: {e}")
+                        try:
+                            lp_calc = LPReturnCalculator()
+                            hold_vs_pool_data = await lp_calc.calculate_hold_vs_pool(
+                                pool_address=pool_address, days=30, initial_investment_usd=10000
+                            )
+                            metrics_data["hold_vs_pool"] = hold_vs_pool_data
+                        except Exception as e:
+                            print(f"⚠️  Hold vs Pool calculation failed: {e}")
+                        try:
+                            from services.pool_history_analyzer import PoolHistoryAnalyzer
+                            history_analyzer = PoolHistoryAnalyzer()
+                            changes = await history_analyzer.detect_changes_in_period(pool_address, days=30)
+                            parameter_changes = []
+                            for change in changes:
+                                try:
+                                    impact = await history_analyzer.analyze_impact_of_change(pool_address, change)
+                                    change.impact = impact
+                                    parameter_changes.append({
+                                        "type_display": change.change_type.replace("_", " ").title(),
+                                        "days_ago": (datetime.now(timezone.utc) - datetime.fromtimestamp(change.timestamp, tz=timezone.utc)).days,
+                                        "before": str(change.details.get("before", "N/A")),
+                                        "after": str(change.details.get("after", "N/A")),
+                                        "impact": impact,
+                                    })
+                                except Exception:
+                                    parameter_changes.append({
+                                        "type_display": change.change_type.replace("_", " ").title(),
+                                        "days_ago": (datetime.now(timezone.utc) - datetime.fromtimestamp(change.timestamp, tz=timezone.utc)).days,
+                                        "before": str(change.details.get("before", "N/A")),
+                                        "after": str(change.details.get("after", "N/A")),
+                                        "impact": None,
+                                    })
+                            metrics_data["parameter_changes"] = parameter_changes if parameter_changes else None
+                        except Exception as e:
+                            print(f"⚠️  Parameter change detection failed: {e}")
+                            metrics_data["parameter_changes"] = None
+
                         await telegram_sender.send_pool_report(
                             pool_data=pool_data,
                             metrics_data=metrics_data,
                             chat_id=str(target_chat_id),
+                            metrics=metrics,
                         )
                     else:
                         # Multi-pool: extract addresses for now (API may need updating for multi-chain)
@@ -162,7 +218,38 @@ async def telegram_webhook(request: Request, db = Depends(get_notion_db)):
                         ranking_by = ["volume", "tvl_growth", "swap_fee"]
                         multi_metrics = await calculator.calculate_multi_pool_metrics(pool_addresses, ranking_by=ranking_by)
                         metrics_data = calculator.format_multi_pool_metrics_for_email(multi_metrics)
-                        await telegram_sender.send_multi_pool_report(metrics_data=metrics_data, chat_id=str(target_chat_id))
+                        # Add anchor token if configured (uses first pool's blockchain)
+                        if settings.default_anchor_token_address and pools:
+                            try:
+                                anchor_service = AnchorTokenInfo()
+                                blockchain_for_anchor = pools[0].blockchain or "ethereum"
+                                anchor_df = await anchor_service.get_token_data(
+                                    settings.default_anchor_token_address, blockchain_for_anchor, debug=False
+                                )
+                                if not anchor_df.empty:
+                                    metrics_data["anchor_token"] = {
+                                        "token_address": settings.default_anchor_token_address,
+                                        "token_symbol": anchor_service._resolve_token_symbol(settings.default_anchor_token_address),
+                                        "stats": anchor_service.get_summary_stats(anchor_df),
+                                        "top_market": anchor_df.iloc[0].to_dict() if len(anchor_df) > 0 else None
+                                    }
+                            except Exception as e:
+                                print(f"⚠️  Anchor token fetch failed: {e}")
+                        # Fetch per-pool data for AI insights
+                        pools_data = []
+                        for p in pools:
+                            try:
+                                pool_info = await calculator.api.get_current_pool_data(p.pool_address, blockchain=p.blockchain)
+                            except Exception as e:
+                                print(f"⚠️  Failed to fetch pool data for {p.pool_address}: {e}")
+                                pool_info = {"address": p.pool_address}
+                            pools_data.append(pool_info)
+                        await telegram_sender.send_multi_pool_report(
+                            metrics_data=metrics_data,
+                            chat_id=str(target_chat_id),
+                            metrics=multi_metrics,
+                            pools_data=pools_data,
+                        )
 
                 except Exception as e:
                     print(f"❌ Error generating Telegram client report for '{client_key}': {str(e)}")

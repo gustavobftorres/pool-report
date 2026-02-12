@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     
     # Optional default pool
     default_pool_address: str | None = None
+    # Default anchor token for Telegram reports (e.g. USDC for lending market comparison)
+    default_anchor_token_address: str | None = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
 
     # Notion API Configuration
     notion_api_key: str | None = None
