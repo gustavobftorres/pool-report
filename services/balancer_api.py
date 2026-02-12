@@ -90,15 +90,19 @@ class BalancerAPI:
             "mode": "MODE",
             "fraxtal": "FRAXTAL",
             "plasma": "PLASMA",
+            "fantom": "FANTOM",
+            "hyperevm": "HYPEREVM",
+            "monad": "MONAD",
+            "sepolia": "SEPOLIA",
+            "sonic": "SONIC",
+            "xlayer": "XLAYER",
         }
         return mapping.get(blockchain_name.lower(), blockchain_name.upper())
     
     def _get_all_chains(self) -> list[tuple[str, str]]:
         """
         Get list of all available chains as (blockchain_name, api_chain) tuples.
-        
-        Returns:
-            List of (blockchain_name, api_chain) tuples
+        Supports all Balancer V3 chains.
         """
         return [
             ("ethereum", "MAINNET"),
@@ -112,6 +116,12 @@ class BalancerAPI:
             ("mode", "MODE"),
             ("fraxtal", "FRAXTAL"),
             ("plasma", "PLASMA"),
+            ("fantom", "FANTOM"),
+            ("hyperevm", "HYPEREVM"),
+            ("monad", "MONAD"),
+            ("sepolia", "SEPOLIA"),
+            ("sonic", "SONIC"),
+            ("xlayer", "XLAYER"),
         ]
     
     async def get_current_pool_data(self, pool_address: str, blockchain: str | None = None) -> Dict[str, Any]:
@@ -156,35 +166,15 @@ class BalancerAPI:
             except Exception as e:
                 print(f"⚠️  V2 query error for {pool_address}: {str(e)}")
         
-<<<<<<< HEAD
-        # Try V3 API on specified chain first, then all chains
-        query = """
-        query GetPool($id: String!, $chain: GqlChain!) {
-          poolGetPool(id: $id, chain: $chain) {
-            id
-            address
-            name
-            type
-            version
-            dynamicData {
-              totalLiquidity
-              volume24h
-              fees24h
-              swapFee
-              aprItems {
-=======
         #V3 API format
         try:
             query = """
             query GetPool($id: String!, $chain: GqlChain!) {
               poolGetPool(id: $id, chain: $chain) {
->>>>>>> @gbr/feat/takeaways
                 id
-                title
-                apr
+                name
+                address
                 type
-<<<<<<< HEAD
-=======
                 version
                 tags
                 dynamicData {
@@ -205,98 +195,62 @@ class BalancerAPI:
                   name
                   weight
                 }
->>>>>>> @gbr/feat/takeaways
               }
             }
-            allTokens {
-              address
-              symbol
-              name
-              weight
-            }
-          }
-        }
-        """
+            """
         
-        # Try specified chain first
-        for blockchain_name, api_chain in chains_to_try:
-            print(f"🔍 Querying pool {pool_address} on chain: {api_chain} ({blockchain_name})")
-            try:
-                variables = {
-                    "id": pool_address.lower(),
-                    "chain": api_chain
-                }
+            # Try specified chain first
+            for blockchain_name, api_chain in chains_to_try:
+                print(f"🔍 Querying pool {pool_address} on chain: {api_chain} ({blockchain_name})")
+                try:
+                    variables = {
+                        "id": pool_address.lower(),
+                        "chain": api_chain
+                    }
+                    
+                    data = await self._execute_query(self.v3_api_url, query, variables)
+                    pool = data.get("poolGetPool")
+                    
+                    if pool:
+                        print(f"✅ Found V3 pool: {pool.get('name')} on {blockchain_name}")
+                        # Debug: log volume24h and fees24h from API
+                        dynamic_data = pool.get("dynamicData", {})
+                        if dynamic_data:
+                            volume24h_api = dynamic_data.get("volume24h", "N/A")
+                            fees24h_api = dynamic_data.get("fees24h", "N/A")
+                            print(f"   📊 API returned - volume24h: {volume24h_api}, fees24h: {fees24h_api}")
+                        # Add metadata for URL generation
+                        pool['_api_version'] = 'v3'
+                        pool['_blockchain'] = blockchain_name
+                        return pool
+                except Exception as e:
+                    print(f"⚠️  V3 API failed on {blockchain_name}: {str(e)}")
+            
+            # If not found on specified chain, try all other chains
+            print(f"🔍 Pool not found on {blockchain_name}, trying all available chains...")
+            for blockchain_name, api_chain in all_chains:
+                # Skip if already tried
+                if (blockchain_name, api_chain) in chains_to_try:
+                    continue
                 
+                variables = {"id": pool_address.lower(), "chain": api_chain}
                 data = await self._execute_query(self.v3_api_url, query, variables)
                 pool = data.get("poolGetPool")
                 
                 if pool:
-                    print(f"✅ Found V3 pool: {pool.get('name')} on {blockchain_name}")
-                    # Debug: log volume24h and fees24h from API
-                    dynamic_data = pool.get("dynamicData", {})
-                    if dynamic_data:
-                        volume24h_api = dynamic_data.get("volume24h", "N/A")
-                        fees24h_api = dynamic_data.get("fees24h", "N/A")
-                        print(f"   📊 API returned - volume24h: {volume24h_api}, fees24h: {fees24h_api}")
+                    print(f"✅ Found V3 pool: {pool.get('name')}")
+                    
+                    # Debug: Show tags if available
+                    tags = pool.get('tags', [])
+                    if tags:
+                        print(f"🏷️  Pool tags: {tags}")
+                    
                     # Add metadata for URL generation
                     pool['_api_version'] = 'v3'
                     pool['_blockchain'] = blockchain_name
                     return pool
-            except Exception as e:
-                print(f"⚠️  V3 API failed on {blockchain_name}: {str(e)}")
-        
-        # If not found on specified chain, try all other chains
-        print(f"🔍 Pool not found on {blockchain_name}, trying all available chains...")
-        for blockchain_name, api_chain in all_chains:
-            # Skip if already tried
-            if (blockchain_name, api_chain) in chains_to_try:
-                continue
-            
-<<<<<<< HEAD
-            print(f"   Trying {api_chain} ({blockchain_name})...")
-            try:
-                variables = {
-                    "id": pool_address.lower(),
-                    "chain": api_chain
-                }
-                
-                data = await self._execute_query(self.v3_api_url, query, variables)
-                pool = data.get("poolGetPool")
-                
-                if pool:
-                    print(f"✅ Found V3 pool: {pool.get('name')} on {blockchain_name}")
-                    # Debug: log volume24h and fees24h from API
-                    dynamic_data = pool.get("dynamicData", {})
-                    if dynamic_data:
-                        volume24h_api = dynamic_data.get("volume24h", "N/A")
-                        fees24h_api = dynamic_data.get("fees24h", "N/A")
-                        print(f"   📊 API returned - volume24h: {volume24h_api}, fees24h: {fees24h_api}")
-                    # Add metadata for URL generation
-                    pool['_api_version'] = 'v3'
-                    pool['_blockchain'] = blockchain_name
-                    return pool
-            except Exception as e:
-                # Silently continue to next chain
-                continue
-=======
-            data = await self._execute_query(self.v3_api_url, query, variables)
-            pool = data.get("poolGetPool")
-            
-            if pool:
-                print(f"✅ Found V3 pool: {pool.get('name')}")
-                
-                # Debug: Show tags if available
-                tags = pool.get('tags', [])
-                if tags:
-                    print(f"🏷️  Pool tags: {tags}")
-                
-                # Add metadata for URL generation
-                pool['_api_version'] = 'v3'
-                pool['_blockchain'] = self.blockchain_name
-                return pool
         except Exception as e:
             print(f"⚠️  V3 API failed: {str(e)}")
->>>>>>> @gbr/feat/takeaways
         
         raise BalancerAPIError(
             f"Pool not found: {pool_address} on any chain. "

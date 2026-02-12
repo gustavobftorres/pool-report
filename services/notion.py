@@ -20,6 +20,32 @@ headers = {
 }
 
 
+def _to_text(prop: Dict[str, Any] | None) -> str:
+    """Best-effort conversion of a Notion property to text."""
+    if not prop:
+        return ""
+    prop_type = prop.get("type")
+    if prop_type == "title":
+        parts = prop.get("title", [])
+        return "".join([p.get("plain_text", "") for p in parts])
+    if prop_type == "rich_text":
+        parts = prop.get("rich_text", [])
+        return "".join([p.get("plain_text", "") for p in parts])
+    if prop_type == "number":
+        value = prop.get("number")
+        return "" if value is None else str(value)
+    if prop_type == "select":
+        select_data = prop.get("select", {})
+        return select_data.get("name", "") if select_data else ""
+    if prop_type == "email":
+        return prop.get("email") or ""
+    if prop_type == "phone_number":
+        return prop.get("phone_number") or ""
+    if prop_type == "url":
+        return prop.get("url") or ""
+    return ""
+
+
 def extract_property_value(property_data: Dict[str, Any], property_type: str) -> Any:
     """Extract value from a Notion property based on its type."""
     if property_type == "title":
@@ -73,36 +99,6 @@ def query_database_pages(database_id: str = None) -> List[Dict[str, Any]]:
 def get_whitelist_data() -> List[Dict[str, Any]]:
     """Get cleaned whitelist data with only username and user_id columns."""
     pages = query_database_pages(WHITELIST_DATABASE_ID)
-
-    def _to_text(prop: Dict[str, Any] | None) -> str:
-        """Best-effort conversion of a Notion property to text."""
-        if not prop:
-            return ""
-
-        prop_type = prop.get("type")
-
-        if prop_type == "title":
-            parts = prop.get("title", [])
-            return "".join([p.get("plain_text", "") for p in parts])
-
-        if prop_type == "rich_text":
-            parts = prop.get("rich_text", [])
-            return "".join([p.get("plain_text", "") for p in parts])
-
-        if prop_type == "number":
-            value = prop.get("number")
-            return "" if value is None else str(value)
-
-        if prop_type == "email":
-            return prop.get("email") or ""
-
-        if prop_type == "phone_number":
-            return prop.get("phone_number") or ""
-
-        if prop_type == "url":
-            return prop.get("url") or ""
-
-        return ""
 
     cleaned: List[Dict[str, Any]] = []
     for page in pages:
@@ -178,14 +174,91 @@ def parse_balancer_url(url: str) -> Dict[str, str] | None:
     return None
 
 
-def _extract_pools_from_property(pool_addresses_prop: Dict[str, Any]) -> List[Dict[str, str]]:
-    """Extract pool URLs from a Notion property and parse them."""
+def _fetch_page_properties(page_id: str) -> Dict[str, Any]:
+    """Fetch a Notion page and return its properties."""
+    url = f"https://api.notion.com/v1/pages/{page_id}"
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    return response.json().get("properties", {})
+
+
+def _extract_pool_from_related_page(properties: Dict[str, Any]) -> Dict[str, str] | None:
+    """Extract pool data (address, blockchain, version, url) from a related page's properties."""
+    # Try URL, Pool addresses, or Address columns
+    url_prop = (
+        properties.get("URL") or properties.get("url") or
+        properties.get("Pool addresses") or properties.get("Pool Addresses")
+    )
+    url = None
+    if url_prop:
+        if url_prop.get("type") == "url":
+            url = url_prop.get("url", "")
+        else:
+            url = _to_text(url_prop)
+    
+    # Chain column - try common names
+    chain_prop = (
+        properties.get("Chain") or properties.get("chain") or
+        properties.get("Blockchain") or properties.get("blockchain")
+    )
+    chain = _to_text(chain_prop).strip().lower() if chain_prop else None
+    
+    # Version (optional)
+    version_prop = properties.get("Version") or properties.get("version")
+    version = _to_text(version_prop).strip().lower() if version_prop else None
+    
+    if url:
+        parsed = parse_balancer_url(url)
+        if parsed:
+            if chain:
+                parsed["blockchain"] = chain
+            if version:
+                parsed["version"] = version
+            return parsed
+    
+    # Fallback: address might be in a separate column
+    addr_prop = properties.get("Address") or properties.get("address")
+    address = _to_text(addr_prop).strip() if addr_prop else None
+    if address and address.startswith("0x") and len(address) == 42:
+        return {
+            "address": address.lower(),
+            "blockchain": chain or "ethereum",
+            "version": version or "v2",
+            "url": url or f"https://balancer.fi/pools/{chain or 'ethereum'}/{version or 'v2'}/{address}"
+        }
+    return None
+
+
+def _extract_pools_from_property(
+    pool_addresses_prop: Dict[str, Any],
+    chain_from_page: str | None = None
+) -> List[Dict[str, str]]:
+    """Extract pool URLs from a Notion property and parse them. Supports relation, rollup, url, rich_text."""
     if not pool_addresses_prop:
         return []
     
     prop_type = pool_addresses_prop.get("type", "")
-    urls = []
+    pools: List[Dict[str, str]] = []
     
+    if prop_type == "relation":
+        # Fetch related pages to get Address + Chain from each
+        relation_data = pool_addresses_prop.get("relation", [])
+        for rel in relation_data:
+            page_id = rel.get("id")
+            if page_id:
+                try:
+                    props = _fetch_page_properties(page_id)
+                    pool = _extract_pool_from_related_page(props)
+                    if pool:
+                        if not pool.get("blockchain") and chain_from_page:
+                            pool["blockchain"] = chain_from_page.lower()
+                        pools.append(pool)
+                except Exception as e:
+                    print(f"⚠️  Failed to fetch related pool page {page_id}: {e}")
+                    continue
+        return pools
+    
+    urls = []
     if prop_type == "rollup":
         rollup_data = pool_addresses_prop.get("rollup", {})
         if rollup_data.get("type") == "array":
@@ -206,11 +279,12 @@ def _extract_pools_from_property(pool_addresses_prop: Dict[str, Any]) -> List[Di
         if url_value:
             urls = [url_value]
     
-    pools = []
     for url in urls:
         if url and isinstance(url, str):
             parsed = parse_balancer_url(url)
             if parsed:
+                if not parsed.get("blockchain") and chain_from_page:
+                    parsed["blockchain"] = chain_from_page.lower()
                 pools.append(parsed)
     
     return pools
@@ -231,13 +305,20 @@ def get_clients_data() -> List[Dict[str, Any]]:
         name = extract_property_value(name_prop, "title")
         client_key = name.lower().strip() if name else ""
         
+        # Chain column - use as fallback when pool URL doesn't include blockchain
+        chain_prop = (
+            properties.get("Chain") or properties.get("chain") or
+            properties.get("Blockchain") or properties.get("blockchain")
+        )
+        chain_from_page = _to_text(chain_prop).strip().lower() if chain_prop else None
+        
         pool_addresses_prop = (
             properties.get("Pool addresses")
             or properties.get("Pool Addresses")
             or properties.get("pool_addresses")
         )
         
-        pools = _extract_pools_from_property(pool_addresses_prop)
+        pools = _extract_pools_from_property(pool_addresses_prop, chain_from_page=chain_from_page)
         
         clients.append({
             "id": record_id,
@@ -279,8 +360,4 @@ def get_user_by_id(user_id: int) -> Dict[str, Any] | None:
     return None
 
 if __name__ == "__main__":
-<<<<<<< HEAD
     pass
-=======
-    pass
->>>>>>> @gbr/feat/takeaways

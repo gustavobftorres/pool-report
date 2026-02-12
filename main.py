@@ -18,13 +18,9 @@ from services.anchor_token_info import AnchorTokenInfo
 from services.data_exporter import DataExporter
 from services.lp_return_calculator import LPReturnCalculator
 from config import settings
-<<<<<<< HEAD
-from db.notion_adapter import get_notion_db, NotionAllowedUser, NotionClient, NotionClientPool
-=======
 
 from notion.notion_adapter import get_notion_db, NotionAllowedUser, NotionClient, NotionClientPool
 
->>>>>>> @gbr/feat/takeaways
 
 
 # Lifespan context manager for startup/shutdown events
@@ -133,13 +129,8 @@ async def telegram_webhook(request: Request, db = Depends(get_notion_db)):
                         blockchain = pool_obj.blockchain
                         version = pool_obj.version
                         
-<<<<<<< HEAD
                         metrics = await calculator.calculate_pool_metrics(pool_address, blockchain=blockchain)
                         pool_data = await calculator.api.get_current_pool_data(pool_address, blockchain=blockchain)
-=======
-                        metrics = await calculator.calculate_pool_metrics(pool_address)
-                        pool_data = await calculator.api.get_current_pool_data(pool_address)
->>>>>>> @gbr/feat/takeaways
                         
                         # Override blockchain/version from pool object if available
                         if blockchain:
@@ -331,10 +322,6 @@ async def generate_report(request: ReportRequest):
     """
     Generate and send a comprehensive pool performance report.
     
-<<<<<<< HEAD
-    Args:
-        request: ReportRequest containing either pool_addresses or user_id
-=======
     **Features:**
     - Single pool: Detailed report with all metrics
     - Multi-pool: Aggregated summary with rankings
@@ -345,7 +332,6 @@ async def generate_report(request: ReportRequest):
     
     **Args:**
         request: ReportRequest with pool addresses and optional export format
->>>>>>> @gbr/feat/takeaways
         
     **Returns:**
         ReportResponse with status, timestamp, and export file paths (if export requested)
@@ -477,13 +463,9 @@ async def generate_report(request: ReportRequest):
                 print(f"✈️ Sending Telegram multi-pool Card to Chat ID: {request.telegram_chat_id}...")
                 await telegram_sender.send_multi_pool_report(
                     metrics_data=metrics_data,
-<<<<<<< HEAD
-                    chat_id=request.telegram_chat_id
-=======
                     chat_id=telegram_chat_id,
                     metrics=multi_metrics,
                     pools_data=pools_data,
->>>>>>> @gbr/feat/takeaways
                 )
                 print("✅ Telegram multi-pool report sent successfully!")
             
@@ -626,12 +608,8 @@ async def generate_report(request: ReportRequest):
                 await telegram_sender.send_pool_report(
                     pool_data=pool_data,
                     metrics_data=metrics_data,
-<<<<<<< HEAD
-                    chat_id=request.telegram_chat_id
-=======
                     chat_id=telegram_chat_id,
                     metrics=metrics
->>>>>>> @gbr/feat/takeaways
                 )
                 print(f"✅ Telegram report sent successfully!")
             

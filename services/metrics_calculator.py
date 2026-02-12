@@ -521,15 +521,12 @@ class MetricsCalculator:
         # Generate Balancer.fi URL
         pool_url = self._generate_pool_url(current_pool, pool_address)
         
-<<<<<<< HEAD
-=======
         # Extract static metrics (pool properties)
         static_metrics = self._extract_static_metrics(current_pool)
         
         # Determine boosted pool type
         boosted_type = get_boosted_pool_type(current_pool)
         
->>>>>>> @gbr/feat/takeaways
         # Extract dynamic metrics (time-dependent)
         dynamic_metrics = self._extract_dynamic_metrics(current_pool, snapshot_15d_ago)
         

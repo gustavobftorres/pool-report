@@ -19,13 +19,6 @@ class Settings(BaseSettings):
     # Telegram Config (only needed for FastAPI backend)
     telegram_bot_token: str | None = None
     
-<<<<<<< HEAD
-    # Notion API Configuration
-    notion_api_key: str | None = None
-    
-    # Database Configuration (optional - no longer used, kept for backwards compatibility)
-    database_url: str | None = None
-=======
     # OpenAI Configuration (for insights generation)
     openai_api_key: str | None = None
     enable_insights: bool = True
@@ -52,7 +45,6 @@ class Settings(BaseSettings):
     
     # CoinGecko API (no key required for free tier)
     coingecko_rate_limit: int = 50  # calls per minute
->>>>>>> @gbr/feat/takeaways
     
     # Optional default pool
     default_pool_address: str | None = None
@@ -67,13 +59,4 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
-<<<<<<< HEAD
-    # Dune API Configuration
-    dune_api_key: str | None = None
-    dune_query_performance: str = "medium"  # "low", "medium", "high"
-    dune_query_timeout: float = 60.0
-
-# Global settings instance
-=======
->>>>>>> @gbr/feat/takeaways
 settings = Settings()
