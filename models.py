@@ -123,6 +123,7 @@ class PoolMetrics(BaseModel):
     
     # Static metrics
     pool_type: str  
+    boosted_type: str = ""  # AAVE, EULER, YEARN, GEARBOX, BOOSTED, or empty for non-boosted
     swap_fee: float 
     is_core_pool: bool = False
     
