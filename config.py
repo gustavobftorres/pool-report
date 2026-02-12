@@ -4,17 +4,8 @@ Loads environment variables from .env file.
 """
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
-    
-    # SMTP Configuration (only needed for FastAPI backend)
-    smtp_host: str = "smtp.gmail.com"
-    smtp_port: int = 587
-    smtp_username: str | None = None
-    smtp_password: str | None = None
-    from_email: str | None = None
-    enable_email: bool = True
     
     # Balancer API Configuration (only needed for FastAPI backend)
     balancer_v3_api: str = "https://api-v3.balancer.fi/"
@@ -28,9 +19,6 @@ class Settings(BaseSettings):
     # Telegram Config (only needed for FastAPI backend)
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None  # Optional: fallback chat ID
-    
-    # Database Configuration (required for both FastAPI and Streamlit)
-    database_url: str = "postgresql://localhost:5432/pool_report"
     
     # OpenAI Configuration (for insights generation)
     openai_api_key: str | None = None
@@ -54,6 +42,10 @@ class Settings(BaseSettings):
     dune_api_key: str | None = None
     dune_query_performance: str = "medium"  # "low", "medium", "high"
     dune_query_timeout: float = 60.0
+    dune_anchor_volume_query_id: int | None = None
+    
+    # CoinGecko API (no key required for free tier)
+    coingecko_rate_limit: int = 50  # calls per minute
     
     # Optional default pool
     default_pool_address: str | None = None

@@ -145,7 +145,7 @@ class DEXBenchmarker:
         
         logger.info(f"Built token lookup with {len(token_lookup)} tokens from included array")
         if not token_lookup:
-            logger.warning("No tokens found in 'included' array! Token extraction will rely on ID parsing.")
+            logger.info("No tokens found in 'included' array - using ID parsing fallback (expected behavior)")
 
         normalized = []
         for p in pools:
@@ -376,6 +376,11 @@ class DEXBenchmarker:
             "balancer_v3": "Balancer",
             "balancer_ethereum": "Balancer",  # Format from GeckoTerminal API
             "balancer-ethereum": "Balancer",
+            # SushiSwap
+            "sushiswap": "SushiSwap",
+            "sushi": "SushiSwap",
+            "sushiswap_v2": "SushiSwap",
+            "sushiswap-ethereum": "SushiSwap",
         }
         
         # Direct match
@@ -397,7 +402,7 @@ class DEXBenchmarker:
                 if key.startswith(first_word) or first_word in key:
                     return value
         
-        logger.warning(f"Unknown DEX name: {dex}, returning None")
+        logger.info(f"Unknown DEX name: {dex}, competitor pool will be skipped")
         return None
 
     @staticmethod

@@ -232,11 +232,29 @@ class DuneMetricsService:
                 f"Executing Dune query {query_id} ({metric_group}) for pool {pool_address}"
             )
 
-            # Build params - comparative_positioning needs main_token_symbol
+            # Build params
             params = {
                 "blockchain": blockchain,
-                "pool_address": pool_address.lower(),
             }
+            
+            # Helper to clean address (remove 0x prefix, lowercase, strip whitespace)
+            def clean_address(addr: str) -> str:
+                """Remove 0x prefix and clean address for Dune from_hex() function."""
+                cleaned = addr.strip().lower()
+                if cleaned.startswith("0x"):
+                    cleaned = cleaned[2:]
+                return cleaned
+            
+            # Standard queries use pool_address, anchor_volume uses token_address
+            if metric_group == "anchor_volume":
+                # from_hex() in Dune requires address WITHOUT 0x prefix
+                params["token_address"] = clean_address(pool_address)
+                if main_token_symbol:
+                    params["token_symbol_placeholder"] = main_token_symbol
+            else:
+                params["pool_address"] = pool_address.lower()
+                
+            # comparative_positioning needs main_token_symbol
             if metric_group == "comparative_positioning" and main_token_symbol:
                 params["main_token_symbol"] = main_token_symbol
 
@@ -250,11 +268,13 @@ class DuneMetricsService:
                 ]
                 
                 # Log parameters for debugging (especially for failing queries)
-                if metric_group == "liquidity_depth":
+                if metric_group == "liquidity_depth" or metric_group == "anchor_volume":
                     logger.info(
-                        f"DEBUG liquidity_depth query {query_id}: params={params}, "
+                        f"DEBUG {metric_group} query {query_id}: params={params}, "
                         f"query_params count={len(query_params)}"
                     )
+                    for qp in query_params:
+                        logger.info(f"  Parameter: {qp.key} = {qp.value} (type: {qp.type})")
                 
                 # Create QueryBase object with query_id and params
                 query = QueryBase(
