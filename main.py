@@ -20,6 +20,9 @@ from services.data_exporter import DataExporter
 from services.lp_return_calculator import LPReturnCalculator
 from config import settings
 
+from notion.notion_adapter import get_notion_db, NotionAllowedUser, NotionClient, NotionClientPool
+
+
 
 # Lifespan context manager for startup/shutdown events
 @asynccontextmanager
@@ -78,162 +81,181 @@ async def health_check():
     )
 
 
-# @app.post("/telegram/webhook", tags=["Telegram"])
-# async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
-#     """
-#     Webhook endpoint for Telegram bot updates.
-#     New behavior:
-#     - /start and /myid: help users discover their Telegram user_id and request whitelist access.
-#     - Any other text (e.g. \"aave\"): if user is whitelisted, treat it as a client key and send a report back on Telegram.
-#     """
-#     try:
-#         data = await request.json()
+@app.post("/telegram/webhook", tags=["Telegram"])
+async def telegram_webhook(request: Request, db = Depends(get_notion_db)):
+    """
+    Webhook endpoint for Telegram bot updates.
+    New behavior:
+    - /start and /myid: help users discover their Telegram user_id and request whitelist access.
+    - Any other text (e.g. \"aave\"): if user is whitelisted, treat it as a client key and send a report back on Telegram.
+    """
+    try:
+        data = await request.json()
         
-#         # Extract message and chat info
-#         if "message" in data:
-#             message = data["message"]
-#             chat_id = message["chat"]["id"]
-#             text = message.get("text", "")
+        # Extract message and chat info
+        if "message" in data:
+            message = data["message"]
+            chat_id = message["chat"]["id"]
+            text = message.get("text", "")
             
-#             # Extract user info
-#             from_user = message.get("from", {})
-#             user_id = from_user.get("id")
-#             username = from_user.get("username")
-#             first_name = from_user.get("first_name", "")
-#             last_name = from_user.get("last_name")
+            # Extract user info
+            from_user = message.get("from", {})
+            user_id = from_user.get("id")
+            username = from_user.get("username")
+            first_name = from_user.get("first_name", "")
+            last_name = from_user.get("last_name")
 
-#             telegram_sender = TelegramSender()
+            telegram_sender = TelegramSender()
 
-#             def _normalize_client_key(raw: str) -> str:
-#                 return (raw or "").strip().lower()
+            def _normalize_client_key(raw: str) -> str:
+                return (raw or "").strip().lower()
 
-#             async def _send_client_report(target_chat_id: str, client_key: str, pool_addresses: list[str]) -> None:
-#                 """
-#                 Background task: generate report metrics and send to Telegram.
-#                 """
-#                 try:
-#                     calculator = MetricsCalculator()
+            async def _send_client_report(target_chat_id: str, client_key: str, pools: list) -> None:
+                """
+                Background task: generate report metrics and send to Telegram.
+                
+                Args:
+                    pools: List of NotionClientPool objects with blockchain, version, and address info
+                """
+                try:
+                    # Send generating message once before processing pools
+                    await telegram_sender.send_message(str(target_chat_id), f"🔄 Generating report for `{client_key}`...")
+                    
+                    calculator = MetricsCalculator()
 
-#                     # Decide single vs multi
-#                     if len(pool_addresses) == 1:
-#                         pool_address = pool_addresses[0]
-#                         metrics = await calculator.calculate_pool_metrics(pool_address)
-#                         pool_data = await calculator.api.get_current_pool_data(pool_address)
-#                         metrics_data = calculator.format_metrics_for_email(metrics, pool_data)
+                    # Decide single vs multi
+                    if len(pools) == 1:
+                        pool_obj = pools[0]
+                        pool_address = pool_obj.pool_address
+                        blockchain = pool_obj.blockchain
+                        version = pool_obj.version
+                        
+                        metrics = await calculator.calculate_pool_metrics(pool_address)
+                        pool_data = await calculator.api.get_current_pool_data(pool_address)
+                        
+                        # Override blockchain/version from pool object if available
+                        if blockchain:
+                            pool_data["_blockchain"] = blockchain
+                        if version:
+                            pool_data["_api_version"] = version
+                        
+                        metrics_data = calculator.format_metrics_for_email(metrics, pool_data)
 
-#                         # Add fields used by Telegram templates/caption
-#                         pool_id = pool_data.get("id", pool_address)
-#                         blockchain = pool_data.get("_blockchain", "ethereum")
-#                         version = pool_data.get("_api_version", "v2")
-#                         pool_url_link = f"https://balancer.fi/pools/{blockchain}/{version}/{pool_id}"
-#                         current_time = datetime.utcnow().strftime("%B %d, %Y at %H:%M UTC")
+                        # Add fields used by Telegram templates/caption
+                        pool_id = pool_data.get("id", pool_address)
+                        blockchain_final = pool_data.get("_blockchain", blockchain or "ethereum")
+                        version_final = pool_data.get("_api_version", version or "v2")
+                        pool_url_link = pool_obj.url or f"https://balancer.fi/pools/{blockchain_final}/{version_final}/{pool_id}"
+                        current_time = datetime.utcnow().strftime("%B %d, %Y at %H:%M UTC")
 
-#                         metrics_data["pool_id"] = pool_id
-#                         metrics_data["pool_url"] = pool_url_link
-#                         metrics_data["timestamp"] = current_time
+                        metrics_data["pool_id"] = pool_id
+                        metrics_data["pool_url"] = pool_url_link
+                        metrics_data["timestamp"] = current_time
 
-#                         await telegram_sender.send_pool_report(
-#                             pool_data=pool_data,
-#                             metrics_data=metrics_data,
-#                             chat_id=str(target_chat_id),
-#                             metrics=metrics
-#                         )
-#                     else:
-#                         ranking_by = ["volume", "tvl_growth", "swap_fee"]
-#                         multi_metrics = await calculator.calculate_multi_pool_metrics(pool_addresses, ranking_by=ranking_by)
-#                         metrics_data = calculator.format_multi_pool_metrics_for_email(multi_metrics)
-#                         await telegram_sender.send_multi_pool_report(
-#                             metrics_data=metrics_data, 
-#                             chat_id=str(target_chat_id),
-#                             metrics=multi_metrics
-#                         )
+                        await telegram_sender.send_pool_report(
+                            pool_data=pool_data,
+                            metrics_data=metrics_data,
+                            chat_id=str(target_chat_id),
+                        )
+                    else:
+                        # Multi-pool: extract addresses for now (API may need updating for multi-chain)
+                        pool_addresses = [p.pool_address for p in pools]
+                        ranking_by = ["volume", "tvl_growth", "swap_fee"]
+                        multi_metrics = await calculator.calculate_multi_pool_metrics(pool_addresses, ranking_by=ranking_by)
+                        metrics_data = calculator.format_multi_pool_metrics_for_email(multi_metrics)
+                        await telegram_sender.send_multi_pool_report(metrics_data=metrics_data, chat_id=str(target_chat_id))
 
-#                 except Exception as e:
-#                     print(f"❌ Error generating Telegram client report for '{client_key}': {str(e)}")
-#                     await telegram_sender.send_message(
-#                         str(target_chat_id),
-#                         f"❌ Failed to generate report for `{client_key}`. Please try again later.",
-#                     )
+                except Exception as e:
+                    print(f"❌ Error generating Telegram client report for '{client_key}': {str(e)}")
+                    await telegram_sender.send_message(
+                        str(target_chat_id),
+                        f"❌ Failed to generate report for `{client_key}`. Please try again later.",
+                    )
 
-#             # Commands
-#             if text == "/start":
-#                 response_text = (
-#                     f"👋 Welcome {first_name}!\n\n"
-#                     f"✅ *Your Telegram User ID:* `{user_id}`\n\n"
-#                     "This bot is restricted.\n"
-#                     "Ask the admin to whitelist your user ID.\n\n"
-#                     "Once approved, send a client name like:\n"
-#                     "`aave`"
-#                 )
-#                 await telegram_sender.send_message(str(chat_id), response_text)
-#                 return {"ok": True}
+            # Commands
+            if text == "/start":
+                response_text = (
+                    f"👋 Welcome {first_name}!\n\n"
+                    f"✅ *Your Telegram User ID:* `{user_id}`\n\n"
+                    "This bot is restricted.\n"
+                    "Ask the admin to whitelist your user ID.\n\n"
+                    "Once approved, send a client name like:\n"
+                    "`aave`"
+                )
+                await telegram_sender.send_message(str(chat_id), response_text)
+                return {"ok": True}
 
-#             if text == "/myid":
-#                 response_text = f"✅ *Your Telegram User ID:* `{user_id}`"
-#                 await telegram_sender.send_message(str(chat_id), response_text)
-#                 return {"ok": True}
+            if text == "/myid":
+                response_text = f"✅ *Your Telegram User ID:* `{user_id}`"
+                await telegram_sender.send_message(str(chat_id), response_text)
+                return {"ok": True}
 
-#             # Client-name request
-#             client_key = _normalize_client_key(text)
-#             if not client_key:
-#                 return {"ok": True}
+            # Client-name request
+            client_key = _normalize_client_key(text)
+            if not client_key:
+                return {"ok": True}
 
-#             # Enforce whitelist
-#             allowed = db.query(AllowedUser).filter(AllowedUser.user_id == user_id).first()
-#             if not allowed:
-#                 response_text = (
-#                     "⛔ You are not authorized to use this bot.\n\n"
-#                     f"Your user ID is: `{user_id}`\n"
-#                     "Ask the admin to whitelist you."
-#                 )
-#                 await telegram_sender.send_message(str(chat_id), response_text)
-#                 return {"ok": True}
+            # Enforce whitelist
+            allowed = db.query(NotionAllowedUser).filter(NotionAllowedUser.user_id == user_id).first()
+            if not allowed:
+                response_text = (
+                    "⛔ You are not authorized to use this bot.\n\n"
+                    f"Your user ID is: `{user_id}`\n"
+                    "Ask the admin to whitelist you."
+                )
+                await telegram_sender.send_message(str(chat_id), response_text)
+                return {"ok": True}
 
-#             # Update allowed user metadata
-#             allowed.last_seen = datetime.utcnow()
-#             allowed.username = username
-#             allowed.first_name = first_name
-#             allowed.last_name = last_name
-#             db.commit()
+            # Note: User metadata updates removed (read-only Notion mode)
 
-#             # Lookup client pools
-#             client = db.query(Client).filter(Client.client_key == client_key).first()
-#             if not client:
-#                 all_clients = [c.client_key for c in db.query(Client).order_by(Client.client_key.asc()).all()]
-#                 listing = "\n".join([f"- `{ck}`" for ck in all_clients]) if all_clients else "_(no clients configured yet)_"
-#                 response_text = (
-#                     f"❓ Unknown client: `{client_key}`\n\n"
-#                     "Available clients:\n"
-#                     f"{listing}"
-#                 )
-#                 await telegram_sender.send_message(str(chat_id), response_text)
-#                 return {"ok": True}
+            # Lookup client pools
+            client = db.query(NotionClient).filter(NotionClient.client_key == client_key).first()
+            if not client:
+                all_clients = [c.client_key for c in db.query(NotionClient).all()]
+                all_clients.sort()  # Sort alphabetically
+                listing = "\n".join([f"- `{ck}`" for ck in all_clients]) if all_clients else "_(no clients configured yet)_"
+                response_text = (
+                    f"❓ Unknown client: `{client_key}`\n\n"
+                    "Available clients:\n"
+                    f"{listing}"
+                )
+                await telegram_sender.send_message(str(chat_id), response_text)
+                return {"ok": True}
 
-#             pool_addresses = [cp.pool_address for cp in client.pools]
-#             if not pool_addresses:
-#                 response_text = f"⚠️ Client `{client_key}` has no pools assigned."
-#                 await telegram_sender.send_message(str(chat_id), response_text)
-#                 return {"ok": True}
+            if not client.pools:
+                response_text = f"⚠️ Client `{client_key}` has no pools assigned."
+                await telegram_sender.send_message(str(chat_id), response_text)
+                return {"ok": True}
 
-#             await telegram_sender.send_message(str(chat_id), f"🔄 Generating report for `{client_key}`...")
-#             asyncio.create_task(_send_client_report(str(chat_id), client_key, pool_addresses))
+            asyncio.create_task(_send_client_report(str(chat_id), client_key, client.pools))
         
-#         return {"ok": True}
+        return {"ok": True}
     
-#     except Exception as e:
-#         print(f"❌ Error in telegram webhook: {str(e)}")
-#         return {"ok": False, "error": str(e)}
+    except Exception as e:
+        print(f"❌ Error in telegram webhook: {str(e)}")
+        return {"ok": False, "error": str(e)}
 
 
-# @app.post("/telegram/setup-webhook", tags=["Telegram"])
-# async def setup_telegram_webhook(webhook_url: str):
+@app.post("/telegram/setup-webhook", tags=["Telegram"])
+async def setup_telegram_webhook(webhook_url: str):
     """
     Configure Telegram bot webhook URL.
     Call this once to register your webhook endpoint with Telegram.
     
     Example: POST /telegram/setup-webhook?webhook_url=https://your-domain.com/telegram/webhook
+    
+    Note: If you provide just the base URL (e.g., https://your-domain.com), 
+    it will automatically append /telegram/webhook
     """
     try:
+        # Normalize webhook URL: ensure it ends with /telegram/webhook
+        webhook_url = webhook_url.strip()
+        if not webhook_url.endswith("/telegram/webhook"):
+            # Remove trailing slash if present
+            webhook_url = webhook_url.rstrip("/")
+            # Append the webhook path
+            webhook_url = f"{webhook_url}/telegram/webhook"
+        
         telegram_api = f"https://api.telegram.org/bot{settings.telegram_bot_token}/setWebhook"
         async with httpx.AsyncClient() as client:
             response = await client.post(telegram_api, json={"url": webhook_url})

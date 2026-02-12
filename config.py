@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     
     # Optional default pool
     default_pool_address: str | None = None
+
+    # Notion API Configuration
+    notion_api_key: str | None = None
     
     model_config = SettingsConfigDict(
         env_file=".env",
