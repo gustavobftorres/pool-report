@@ -279,4 +279,8 @@ def get_user_by_id(user_id: int) -> Dict[str, Any] | None:
     return None
 
 if __name__ == "__main__":
+<<<<<<< HEAD
     pass
+=======
+    pass
+>>>>>>> @gbr/feat/takeaways

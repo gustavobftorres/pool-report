@@ -58,3 +58,14 @@ temp_images/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Media
+*.pdf
+*.csv
+*.xlsx
+
+# Export files
+exports/
+
+# Personal
+AI_Agent_files

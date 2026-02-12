@@ -172,6 +172,39 @@
         </tr>
         {% endif %}
 
+        {% if anchor_token %}
+        <tr>
+            <td class="content-td" style="padding-top: 0;">
+                <div style="padding: 25px; background-color: #3d424a; border-radius: 12px; border: 2px solid #BAB3F3;">
+                    <p style="color: #BAB3F3; font-size: 14px !important; text-transform: uppercase; font-weight: 700; margin: 0 0 15px;">⚓ Anchor Token: {{ anchor_token.token_symbol }}</p>
+                    
+                    {% if anchor_token.top_market %}
+                    <table width="100%">
+                        <tr>
+                            <td width="60%">
+                                <p style="color: #E5D1B9; font-size: 12px !important; margin: 0 0 5px; font-weight: 600;">Best Lending Market</p>
+                                <p style="color: #ffffff; font-size: 18px !important; font-weight: 700; margin: 0;">
+                                    {{ anchor_token.top_market.protocol or anchor_token.top_market.blockchain or 'N/A' }}
+                                </p>
+                            </td>
+                            <td width="40%" style="text-align: right;">
+                                <p style="color: #E5D1B9; font-size: 12px !important; margin: 0 0 5px; font-weight: 600;">APY</p>
+                                <p style="color: #4ade80; font-size: 18px !important; font-weight: 700; margin: 0;">
+                                    {% if anchor_token.top_market.apy %}{{ "%.2f"|format(anchor_token.top_market.apy) }}%{% else %}N/A{% endif %}
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                    {% endif %}
+                    
+                    <p style="color: #8d929b; font-size: 11px !important; margin-top: 15px; margin-bottom: 0;">
+                        📊 {{ anchor_token.stats.total_markets or 0 }} lending markets tracked
+                    </p>
+                </div>
+            </td>
+        </tr>
+        {% endif %}
+
         <tr>
             <td style="padding: 30px 45px; background-color: #4a4e57; border-top: 2px solid #BAB3F3;">
                 <p style="color: #E5D1B9; font-weight: 700; margin: 0 0 6px; font-size: 13px !important;">📅 Generated: {{ timestamp }}</p>

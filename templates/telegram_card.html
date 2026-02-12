@@ -179,6 +179,131 @@
             </td>
         </tr>
         
+        {% if hold_vs_pool %}
+        <tr>
+            <td class="content-td" style="padding-top: 0; padding-bottom: 0;">
+                <div style="padding: 25px; background-color: #2d3139; border-radius: 12px; border: 2px solid #4CAF50;">
+                    <p style="font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #ffffff;">
+                        📊 Hold vs Pool Analysis ({{ hold_vs_pool.period_days }} Days)
+                    </p>
+                    
+                    <div style="margin-bottom: 15px; padding: 15px; background-color: #3d424a; border-radius: 8px;">
+                        <p style="margin: 5px 0; color: #ffffff;">💰 <strong>Hold Strategy:</strong></p>
+                        <p style="margin: 5px 0; padding-left: 20px; color: #ffffff;">
+                            {% if hold_vs_pool.hold_strategy.return_pct >= 0 %}+{% endif %}{{ "%.2f"|format(hold_vs_pool.hold_strategy.return_pct) }}%
+                            (${{ "{:,.0f}".format(hold_vs_pool.initial_investment_usd) }} → ${{ "{:,.0f}".format(hold_vs_pool.hold_strategy.final_value_usd) }})
+                        </p>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px; padding: 15px; background-color: #3d424a; border-radius: 8px;">
+                        <p style="margin: 5px 0; color: #ffffff;">🏊 <strong>Pool Strategy:</strong></p>
+                        <p style="margin: 5px 0; padding-left: 20px; color: #ffffff;">
+                            {% if hold_vs_pool.pool_strategy.return_pct >= 0 %}+{% endif %}{{ "%.2f"|format(hold_vs_pool.pool_strategy.return_pct) }}%
+                            (${{ "{:,.0f}".format(hold_vs_pool.initial_investment_usd) }} → ${{ "{:,.0f}".format(hold_vs_pool.pool_strategy.final_value_usd) }})
+                        </p>
+                        
+                        <p style="margin: 10px 0 5px 20px; font-size: 14px; color: #c0c0c0;"><em>Breakdown:</em></p>
+                        <div style="padding-left: 40px; font-size: 14px; color: #ffffff;">
+                            <p style="margin: 3px 0;">Trading Fees: +${{ "{:,.0f}".format(hold_vs_pool.pool_strategy.breakdown.fees_earned_usd) }}</p>
+                            <p style="margin: 3px 0;">Incentives: +${{ "{:,.0f}".format(hold_vs_pool.pool_strategy.breakdown.incentives_earned_usd) }}</p>
+                            <p style="margin: 3px 0;">Impermanent Loss: ${{ "{:,.0f}".format(hold_vs_pool.pool_strategy.breakdown.impermanent_loss_usd) }}</p>
+                            <p style="margin: 3px 0;">Token Appreciation: +${{ "{:,.0f}".format(hold_vs_pool.pool_strategy.breakdown.token_appreciation_usd) }}</p>
+                        </div>
+                    </div>
+                    
+                    <div style="padding: 15px; background-color: {% if hold_vs_pool.comparison.winner == 'pool' %}#1e4620{% else %}#4a2020{% endif %}; border-radius: 8px; border: 2px solid {% if hold_vs_pool.comparison.winner == 'pool' %}#4CAF50{% else %}#f44336{% endif %};">
+                        <p style="margin: 0; font-weight: bold; color: #ffffff;">
+                            {% if hold_vs_pool.comparison.winner == 'pool' %}✅{% else %}⚠️{% endif %}
+                            {{ hold_vs_pool.comparison.recommendation }}
+                        </p>
+                    </div>
+                </div>
+            </td>
+        </tr>
+        {% endif %}
+        
+        {% if parameter_changes %}
+        <tr>
+            <td class="content-td" style="padding-top: 0; padding-bottom: 0;">
+                <div style="padding: 25px; background-color: #2d3139; border-radius: 12px; border: 2px solid #BAB3F3;">
+                    <p style="color: #BAB3F3; font-size: 18px !important; font-weight: 700; margin: 0 0 20px;">
+                        📅 Recent Pool Changes (Last 30 Days)
+                    </p>
+                    
+                    {% for change in parameter_changes %}
+                    <div style="margin-bottom: 20px; padding: 15px; background-color: #3d424a; border-radius: 8px;">
+                        <p style="color: #E5D1B9; font-weight: 700; margin: 0 0 10px; font-size: 16px !important;">
+                            🔧 {{ change.type_display }} ({{ change.days_ago }} days ago)
+                        </p>
+                        
+                        <div style="padding-left: 15px; margin-bottom: 10px;">
+                            <p style="color: #ffffff; margin: 5px 0; font-size: 14px !important;">
+                                Before: <span style="color: #BAB3F3;">{{ change.before }}</span>  →  After: <span style="color: #E5D1B9;">{{ change.after }}</span>
+                            </p>
+                        </div>
+                        
+                        {% if change.impact %}
+                        <div style="padding: 10px; background-color: #4a4f58; border-radius: 6px;">
+                            <p style="color: #BAB3F3; margin: 3px 0; font-size: 13px !important; font-style: italic;">Impact:</p>
+                            {% if change.impact.avg_volume_change_pct is defined %}
+                            <p style="color: #ffffff; margin: 3px 0; padding-left: 15px; font-size: 13px !important;">
+                                Volume: <span style="color: {% if change.impact.avg_volume_change_pct > 0 %}#4ade80{% else %}#f87171{% endif %};">{% if change.impact.avg_volume_change_pct > 0 %}+{% endif %}{{ "%.1f"|format(change.impact.avg_volume_change_pct) }}%</span>
+                            </p>
+                            {% endif %}
+                            {% if change.impact.avg_tvl_change_pct is defined %}
+                            <p style="color: #ffffff; margin: 3px 0; padding-left: 15px; font-size: 13px !important;">
+                                TVL: <span style="color: {% if change.impact.avg_tvl_change_pct > 0 %}#4ade80{% else %}#f87171{% endif %};">{% if change.impact.avg_tvl_change_pct > 0 %}+{% endif %}{{ "%.1f"|format(change.impact.avg_tvl_change_pct) }}%</span>
+                            </p>
+                            {% endif %}
+                            <p style="color: #8d929b; margin: 5px 0; padding-left: 15px; font-style: italic; font-size: 12px !important;">
+                                {{ change.impact.summary }}
+                            </p>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                    
+                    {% if parameter_changes|length == 0 %}
+                    <p style="color: #8d929b; font-style: italic; margin: 0; font-size: 14px !important;">No parameter changes detected in the last 30 days.</p>
+                    {% endif %}
+                </div>
+            </td>
+        </tr>
+        {% endif %}
+        
+        {% if anchor_token %}
+        <tr>
+            <td class="content-td" style="padding-top: 0; padding-bottom: 0;">
+                <div style="padding: 25px; background-color: #3d424a; border-radius: 12px; border: 2px solid #BAB3F3;">
+                    <p style="color: #BAB3F3; font-size: 14px !important; text-transform: uppercase; font-weight: 700; margin: 0 0 15px;">⚓ Anchor Token: {{ anchor_token.token_symbol }}</p>
+                    
+                    {% if anchor_token.top_market %}
+                    <table width="100%">
+                        <tr>
+                            <td width="60%">
+                                <p style="color: #E5D1B9; font-size: 12px !important; margin: 0 0 5px; font-weight: 600;">Best Lending Market</p>
+                                <p style="color: #ffffff; font-size: 18px !important; font-weight: 700; margin: 0;">
+                                    {{ anchor_token.top_market.protocol or anchor_token.top_market.blockchain or 'N/A' }}
+                                </p>
+                            </td>
+                            <td width="40%" style="text-align: right;">
+                                <p style="color: #E5D1B9; font-size: 12px !important; margin: 0 0 5px; font-weight: 600;">APY</p>
+                                <p style="color: #4ade80; font-size: 18px !important; font-weight: 700; margin: 0;">
+                                    {% if anchor_token.top_market.apy %}{{ "%.2f"|format(anchor_token.top_market.apy) }}%{% else %}N/A{% endif %}
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                    {% endif %}
+                    
+                    <p style="color: #8d929b; font-size: 11px !important; margin-top: 15px; margin-bottom: 0;">
+                        📊 {{ anchor_token.stats.total_markets or 0 }} lending markets tracked
+                    </p>
+                </div>
+            </td>
+        </tr>
+        {% endif %}
+        
         <tr>
             <td style="padding: 0 45px 30px;">
                 <div style="padding: 25px; background-color: #5B6068; border-radius: 12px; border: 2px solid #BAB3F3;">
