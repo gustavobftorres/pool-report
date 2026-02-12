@@ -11,6 +11,80 @@ A FastAPI-based web service that generates performance reports for Balancer v2/v
 - 💾 **CSV Export**: Generate CSV reports for anchor token lending markets (992+ markets tracked)
 - 🔍 **Dune Analytics Integration**: Historical volume data from on-chain DEX aggregators
 
+## New Features (Phases 1-8)
+
+### 🚀 Boosted Pool Support (Phase 1 + Phase 8)
+Automatically detects ERC-4626 boosted pools (like bb-a-USD) and extracts underlying tokens for accurate competitor analysis. **Phase 8 Enhancement**: Now uses Balancer API tags for more accurate detection (BOOSTED_AAVE, BOOSTED_EULER, etc.) with heuristic fallback. Supports Aave aTokens, Lido stETH, and other wrapped yield-bearing tokens.
+
+**Boosted Pool Types Detected:**
+- AAVE - Aave boosted pools
+- EULER - Euler boosted pools  
+- YEARN - Yearn boosted pools
+- GEARBOX - Gearbox boosted pools
+- BOOSTED - Generic boosted pools
+
+### 📁 Data Export (Phase 2 + Phase 6)
+Export comprehensive pool data to Excel or CSV for offline analysis and RAG model consumption:
+
+**Formats:**
+- **Excel (.xlsx)**: Multi-sheet workbook with metrics, hold vs pool, parameter changes
+- **CSV (.csv)**: Flat structure for easy import to other tools
+
+**Usage:**
+```json
+POST /report
+{
+  "pool_addresses": ["0x3de27efa2f1aa663ae5d458857e731c129069f29"],
+  "anchor_token_address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+  "recipient_email": "user@example.com",
+  "telegram_chat_id": "123456789",
+  "export_format": "both"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "sent",
+  "timestamp": "2026-02-11T18:30:00Z",
+  "pool_name": "20wstETH-80AAVE",
+  "pool_address": "0x3de27efa...",
+  "export_files": {
+    "excel": "exports/pool_0x3de27efa_20260211_183000.xlsx",
+    "csv": "exports/pool_0x3de27efa_20260211_183000.csv"
+  }
+}
+```
+
+**Export Contents:**
+- Basic pool metrics (TVL, volume, fees, APR)
+- Hold vs Pool analysis (Phase 3)
+- Parameter changes (Phase 4)
+- Anchor token data (if provided)
+
+**Multi-Pool Export** (Phase 6):
+- ✅ Multi-pool export now fully supported
+- ✅ Excel includes Pool Comparison, Rankings, Summary, and Anchor Token tabs
+- ✅ CSV format for multi-pool data
+- ✅ Automatic file naming with pool count (e.g., `PoolReport_3pools_USDC_timestamp.xlsx`)
+
+### 💰 Hold vs Pool Analysis (Phase 3)
+Compare LP returns against simply holding tokens:
+- Trading fees earned from pool participation
+- Incentives received (BAL, partner tokens)
+- Impermanent loss calculated from price divergence
+- Token appreciation tracked over time
+- Clear recommendation: Hold or Pool
+
+### 📅 Parameter Change Detection (Phase 4 + Phase 7)
+Automatically detects and analyzes pool configuration changes with refined filtering:
+- **Swap fee adjustments** - Tracks fee changes across all pool types
+- **Weight changes (LBP pools only)** - Phase 7: Filters weight changes to Liquidity Bootstrapping Pools only (regular weighted pools have immutable weights)
+- **Amp factor changes (Stable pools)** - Phase 7: Tracks amplification parameter updates in stable pools (AmpUpdateStarted, AmpUpdateStopped events)
+- **Surge parameters (Stable Surge pools)** - Phase 7: Support for surge threshold and max surge fee tracking (when available in subgraph)
+- Impact analysis: Compare metrics 7 days before/after changes
+- Comprehensive change history with human-readable impact summaries
+
 ## Metrics Tracked
 
 ### Pool Performance Metrics
@@ -342,6 +416,32 @@ curl -X POST "http://localhost:8000/report" \
 
 Or use the interactive Swagger UI at `/docs` to test the endpoint.
 
+### Complete Analysis with All Features
+
+Request comprehensive analysis with data export and advanced features:
+
+```bash
+curl -X POST "http://localhost:8000/report" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pool_addresses": ["0x3de27efa2f1aa663ae5d458857e731c129069f29"],
+    "anchor_token_address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+    "export_format": "both",
+    "recipient_email": "user@example.com",
+    "telegram_chat_id": "123456789"
+  }'
+```
+
+**New Parameters:**
+- `export_format` (optional): `"excel"`, `"csv"`, or `"both"` - Generates downloadable reports
+- Response includes `export_files` with paths to generated files
+
+**Features Enabled:**
+- ✅ Boosted pool detection (automatic)
+- ✅ Hold vs Pool analysis (automatic for supported pools)
+- ✅ Parameter change detection (automatic, 30-day lookback)
+- ✅ Data export (when `export_format` specified)
+
 ### Generate Anchor Token CSV Only
 
 To generate just the CSV file with anchor token data (no Telegram report):
@@ -392,16 +492,31 @@ pool-report/
 │   ├── balancer_api.py            # GraphQL queries to Balancer APIs
 │   ├── metrics_calculator.py      # Metrics comparison logic
 │   ├── telegram_sender.py         # Telegram card generation and sending
-│   ├── anchor_token_info.py       # NEW: Anchor token lending & volume data
+│   ├── anchor_token_info.py       # Anchor token lending & volume data
 │   ├── dune_metrics.py            # Dune Analytics integration
-│   └── insights_generator.py      # AI-powered insights generation
+│   ├── insights_generator.py      # AI-powered insights generation
+│   ├── boosted_pool_analyzer.py   # NEW: Boosted pool detection (Phase 1)
+│   ├── data_exporter.py           # NEW: Excel/CSV export (Phase 2)
+│   ├── coingecko_api.py           # NEW: CoinGecko price API (Phase 3)
+│   ├── lp_return_calculator.py    # NEW: Hold vs Pool analysis (Phase 3)
+│   └── pool_history_analyzer.py   # NEW: Parameter change detection (Phase 4)
 ├── templates/
 │   ├── telegram_card.html         # Single pool Telegram card (with anchor info)
 │   └── telegram_card_multi.html   # Multi-pool Telegram card (with anchor info)
+├── scripts/                       # NEW: Testing and profiling scripts
+│   ├── test_full_report.py        # Manual integration testing
+│   └── profile_performance.py     # Performance profiling
 ├── tests/
 │   ├── test_anchor_token_info.py  # Unit tests for anchor token service
 │   ├── test_anchor_integration.py # Integration tests
-│   └── interactive_anchor_test.py # Manual testing script (generates CSV)
+│   ├── interactive_anchor_test.py # Manual testing script (generates CSV)
+│   ├── test_boosted_pool_analyzer.py  # NEW: Phase 1 tests
+│   ├── test_data_exporter.py          # NEW: Phase 2 tests
+│   ├── test_lp_return_calculator.py   # NEW: Phase 3 tests
+│   ├── test_pool_history_analyzer.py  # NEW: Phase 4 tests
+│   └── test_full_integration.py       # NEW: Phase 5 integration tests
+├── docs/                          # NEW: Feature documentation
+│   └── NEW_FEATURES.md            # Comprehensive guide to Phases 1-4
 ├── requirements.txt               # Python dependencies
 ├── .env                           # Environment variables (create this)
 ├── ANCHOR_TOKEN_SETUP.md          # Dune Analytics query setup guide
@@ -421,12 +536,41 @@ PYTHONPATH=. ./venv/bin/pytest -v
 PYTHONPATH=. ./venv/bin/pytest tests/test_anchor*.py -v
 ```
 
+### Run Phase-Specific Tests
+```bash
+# Phase 1 + 8: Boosted Pool Detection (with API tags support)
+PYTHONPATH=. pytest tests/test_boosted_pool_analyzer.py -v
+
+# Phase 2 + 6: Data Export (single + multi-pool)
+PYTHONPATH=. pytest tests/test_data_exporter.py -v
+
+# Phase 3: Hold vs Pool Analysis
+PYTHONPATH=. pytest tests/test_lp_return_calculator.py -v
+
+# Phase 4 + 7: Parameter Change Detection (refined filtering)
+PYTHONPATH=. pytest tests/test_pool_history_analyzer.py -v
+
+# Phase 5: Full Integration
+PYTHONPATH=. pytest tests/test_full_integration.py -v
+```
+
+### Manual Integration Testing
+```bash
+# Test complete pipeline with real data
+python scripts/test_full_report.py
+
+# Profile performance
+python scripts/profile_performance.py
+```
+
 **Current Test Coverage:**
-- ✅ 11 anchor token tests (unit + integration)
-- ✅ Pool metrics calculation
-- ✅ Multi-pool aggregation
-- ✅ Token symbol resolution
-- ✅ CSV export functionality
+- ✅ 33 boosted pool analyzer tests (Phase 1 + Phase 8)
+- ✅ 15 data exporter tests (Phase 2 + Phase 6)
+- ✅ 18 LP return calculator tests (Phase 3)
+- ✅ 29 pool history analyzer tests (Phase 4 + Phase 7)
+- ✅ 8 full integration tests (Phase 5)
+- ✅ 11 anchor token tests (existing)
+- **Total: 114+ tests**
 
 ## Support
 

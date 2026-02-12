@@ -4,7 +4,7 @@ Generates and emails performance reports for Balancer pools.
 """
 from fastapi import FastAPI, HTTPException, status, Request, Depends
 from fastapi.responses import JSONResponse
-from datetime import datetime
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 import httpx
 import asyncio
@@ -16,6 +16,8 @@ from services.email_sender import EmailSender, EmailSenderError
 from services.balancer_api import BalancerAPIError
 from services.telegram_sender import TelegramSender
 from services.anchor_token_info import AnchorTokenInfo
+from services.data_exporter import DataExporter
+from services.lp_return_calculator import LPReturnCalculator
 from config import settings
 
 
@@ -25,6 +27,11 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for the FastAPI app."""
     # Startup
     print("🚀 Starting Balancer Pool Reporter API...")
+    
+    # Cleanup old exports on startup
+    exporter = DataExporter()
+    exporter.cleanup_old_exports(max_age_hours=24)
+    
     yield
     # Shutdown
     print("👋 Shutting down Balancer Pool Reporter API...")
@@ -252,37 +259,78 @@ async def health_check():
     response_model=ReportResponse,
     status_code=status.HTTP_200_OK,
     tags=["Reports"],
-    summary="Generate and send pool performance report",
+    summary="Generate and send comprehensive pool performance report",
     description="""
-    Generate a comprehensive performance report for a Balancer pool and send it via email.
+    Generate a comprehensive performance report for Balancer pool(s) with advanced features.
     
-    The report includes:
+    **Core Metrics:**
     - Total Value Locked (TVL) comparison with 15 days ago
     - Volume and fees over the last 15 days
-    - Current APR
+    - Current APR and fee percentages
+    - Anchor token lending market analysis
     
-    The report is sent as a beautifully styled HTML email matching balancer.fi design.
+    **New Features (Phases 1-4):**
+    - 🚀 **Boosted Pool Detection**: Automatically detects and analyzes boosted pools
+    - 📁 **Data Export**: Export to Excel/CSV with `export_format` parameter
+    - 💰 **Hold vs Pool Analysis**: Compares LP returns vs holding tokens (automatic)
+    - 📅 **Parameter Changes**: Detects fee/weight changes in last 30 days (automatic)
     
-    Supports two modes:
-    1. Direct pool addresses: Provide pool_addresses array
-    2. User lookup: Provide user_id to automatically use assigned pools
+    **Request Modes:**
+    1. Direct pool addresses: Provide `pool_addresses` array
+    2. Optional data export: Set `export_format` to "excel", "csv", or "both"
+    
+    **Example Request:**
+    ```json
+    {
+      "pool_addresses": ["0x3de27efa2f1aa663ae5d458857e731c129069f29"],
+      "anchor_token_address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+      "export_format": "both",
+      "recipient_email": "user@example.com",
+      "telegram_chat_id": "123456789"
+    }
+    ```
+    
+    **Response Includes:**
+    - Report delivery status
+    - Export file paths (if `export_format` specified)
+    - Pool performance summary
+    - Anchor token best lending market
     """
 )
 async def generate_report(request: ReportRequest):
     """
-    Generate and send a pool performance report via Email.
-    - Single pool: Email report (and Telegram card as an extra channel)
-    - Multi-pool: Email summary report
+    Generate and send a comprehensive pool performance report.
     
-    Args:
-        request: ReportRequest containing either pool_addresses or user_id
-        db: Database session (injected)
+    **Features:**
+    - Single pool: Detailed report with all metrics
+    - Multi-pool: Aggregated summary with rankings
+    - Boosted pool support: Automatic detection and underlying token extraction
+    - Data export: Excel/CSV export for single pool reports (Phase 6)
+    - Hold vs Pool: Profitability analysis (automatic for supported pools)
+    - Parameter changes: Historical configuration changes (automatic)
+    
+    **Args:**
+        request: ReportRequest with pool addresses and optional export format
         
-    Returns:
-        ReportResponse with status, timestamp, and pool information
+    **Returns:**
+        ReportResponse with status, timestamp, and export file paths (if export requested)
         
-    Raises:
+    **Raises:**
         HTTPException: If report generation or sending fails
+        
+    **Export Feature (Phase 6):**
+    Single pool reports can be exported to Excel/CSV by setting `export_format`:
+    - "excel": Multi-sheet Excel workbook with metrics and analysis
+    - "csv": Flat CSV file for easy data import
+    - "both": Both Excel and CSV files
+    
+    Export files include:
+    - Basic pool metrics (TVL, volume, fees, APR)
+    - Hold vs Pool analysis (Phase 3)
+    - Parameter changes (Phase 4)
+    - Anchor token data (if provided)
+    
+    Note: Multi-pool export is not yet implemented (future Phase 7)
     """
     try:
         # Determine pool addresses (either from request or user lookup)
@@ -307,6 +355,8 @@ async def generate_report(request: ReportRequest):
         # Get anchor token information
         anchor_service = AnchorTokenInfo()
         anchor_data = None
+        anchor_df = None  # Store full DataFrame for export
+        anchor_csv_path = None  # Store CSV path
         try:
             anchor_address = request.anchor_token_address.lower()
             # Default to ethereum for anchor token lookup if not detectable from first pool
@@ -400,11 +450,35 @@ async def generate_report(request: ReportRequest):
                 )
                 print("✅ Telegram multi-pool report sent successfully!")
             
+            # Export data if requested (Phase 6: Export Integration)
+            export_files = {}
+            if request.export_format:
+                try:
+                    print(f"📁 Generating multi-pool {request.export_format} export...")
+                    data_exporter = DataExporter()
+                    
+                    export_files = data_exporter.export_multi_pool_metrics(
+                        multi_metrics=multi_metrics,
+                        anchor_data=anchor_data,
+                        anchor_df=anchor_df,
+                        format=request.export_format,
+                    )
+                    
+                    print(f"✅ Multi-pool export successful!")
+                    for fmt, path in export_files.items():
+                        print(f"   {fmt.upper()}: {path}")
+                        
+                except Exception as e:
+                    print(f"⚠️  Export failed: {e}")
+                    import traceback
+                    traceback.print_exc()
+            
             return ReportResponse(
                 status="sent",
                 timestamp=datetime.utcnow(),
                 pool_name=f"Comparison of {len(multi_metrics.pools)} Pools",
-                pool_address=", ".join(pool_addresses[:3]) + ("..." if len(pool_addresses) > 3 else "")
+                pool_address=", ".join(pool_addresses[:3]) + ("..." if len(pool_addresses) > 3 else ""),
+                export_files=export_files if export_files else None
             )
         
         else:
@@ -439,6 +513,60 @@ async def generate_report(request: ReportRequest):
             if anchor_data:
                 metrics_data["anchor_token"] = anchor_data
             
+            # Calculate hold vs pool analysis
+            hold_vs_pool_data = None
+            try:
+                lp_calc = LPReturnCalculator()
+                hold_vs_pool_data = await lp_calc.calculate_hold_vs_pool(
+                    pool_address=pool_address,
+                    days=30,  # Configurable via request if needed
+                    initial_investment_usd=10000  # Configurable via request if needed
+                )
+                print(f"✅ Hold vs Pool: {hold_vs_pool_data['comparison']['recommendation']}")
+                metrics_data["hold_vs_pool"] = hold_vs_pool_data
+            except Exception as e:
+                print(f"⚠️  Hold vs Pool calculation failed: {e}")
+                # Don't fail the whole request
+            
+            # Detect parameter changes (Phase 4)
+            parameter_changes = []
+            try:
+                from services.pool_history_analyzer import PoolHistoryAnalyzer
+                history_analyzer = PoolHistoryAnalyzer()
+                changes = await history_analyzer.detect_changes_in_period(pool_address, days=30)
+                
+                # Analyze impact for each change
+                for change in changes:
+                    try:
+                        impact = await history_analyzer.analyze_impact_of_change(pool_address, change)
+                        change.impact = impact
+                        
+                        # Format for template
+                        parameter_changes.append({
+                            "type_display": change.change_type.replace("_", " ").title(),
+                            "days_ago": (datetime.now(timezone.utc) - datetime.fromtimestamp(change.timestamp, tz=timezone.utc)).days,
+                            "before": str(change.details.get("before", "N/A")),
+                            "after": str(change.details.get("after", "N/A")),
+                            "impact": impact,
+                        })
+                    except Exception as e:
+                        print(f"⚠️  Failed to analyze impact for change: {e}")
+                        # Add the change without impact analysis
+                        parameter_changes.append({
+                            "type_display": change.change_type.replace("_", " ").title(),
+                            "days_ago": (datetime.now(timezone.utc) - datetime.fromtimestamp(change.timestamp, tz=timezone.utc)).days,
+                            "before": str(change.details.get("before", "N/A")),
+                            "after": str(change.details.get("after", "N/A")),
+                            "impact": None,
+                        })
+                
+                print(f"✅ Detected {len(parameter_changes)} parameter changes")
+                metrics_data["parameter_changes"] = parameter_changes if parameter_changes else None
+            except Exception as e:
+                print(f"⚠️  Parameter change detection failed: {e}")
+                # Don't fail the whole request
+                metrics_data["parameter_changes"] = None
+            
             # Send email
             if request.recipient_email and email_sender.enabled:
                 try:
@@ -468,11 +596,42 @@ async def generate_report(request: ReportRequest):
                 )
                 print(f"✅ Telegram report sent successfully!")
             
+            # Export data if requested (Phase 6: Export Integration)
+            export_files = {}
+            if request.export_format:
+                try:
+                    print(f"📁 Generating {request.export_format} export...")
+                    data_exporter = DataExporter()
+                    
+                    # Use adapter method to export simple metrics
+                    # Note: This exports MetricsCalculator data (basic metrics only).
+                    # For full competitor data from all 8 Dune metric groups,
+                    # future enhancement would use MetricsPipeline instead.
+                    export_files = data_exporter.export_simple_pool_metrics(
+                        pool_data=pool_data,
+                        metrics_data=metrics_data,
+                        anchor_data=anchor_data,
+                        anchor_df=anchor_df,  # Pass full DataFrame for Excel export
+                        format=request.export_format,
+                        filename=None  # Auto-generate filename
+                    )
+                    
+                    print(f"✅ Export successful!")
+                    for fmt, path in export_files.items():
+                        print(f"   {fmt.upper()}: {path}")
+                        
+                except Exception as e:
+                    print(f"⚠️  Export failed: {e}")
+                    # Don't fail the whole request if export fails
+                    import traceback
+                    traceback.print_exc()
+            
             return ReportResponse(
                 status="sent",
                 timestamp=datetime.utcnow(),
                 pool_name=metrics.pool_name,
-                pool_address=pool_address
+                pool_address=pool_address,
+                export_files=export_files if export_files else None
             )
         
     except BalancerAPIError as e:

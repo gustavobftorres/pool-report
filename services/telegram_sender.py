@@ -63,11 +63,31 @@ class TelegramSender:
         
         return None
     
+    def _escape_markdown(self, text: str) -> str:
+        """
+        Escape special characters for Telegram Markdown (not MarkdownV2).
+        
+        For basic Markdown mode, these characters need escaping:
+        - Underscores (_) for italic
+        - Asterisks (*) for bold
+        - Backticks (`) for code
+        - Square brackets ([) for links
+        """
+        # Only escape characters that break Telegram's basic Markdown parser
+        escape_chars = {
+            '_': '\\_',
+            '*': '\\*',
+            '[': '\\[',
+            '`': '\\`',
+        }
+        
+        for char, escaped in escape_chars.items():
+            text = text.replace(char, escaped)
+        
+        return text
+    
     def _truncate_caption(self, caption: str, max_length: int = 1024) -> str:
-        """
-        Truncate caption to Telegram's limit, preserving structure.
-        If truncation is needed, cut insights first, then other content.
-        """
+        """Truncate caption to Telegram limit while preserving structure."""
         if len(caption) <= max_length:
             return caption
         
@@ -163,7 +183,9 @@ class TelegramSender:
                 if metrics:
                     insights = await self.insights_generator.generate_single_pool_insights(metrics, pool_data, max_bullets=4)
                     if insights:
-                        caption += "\n\nInsights:\n" + insights
+                        # Escape Markdown special characters in insights
+                        escaped_insights = self._escape_markdown(insights)
+                        caption += "\n\nInsights:\n" + escaped_insights
                 await self.send_message(str(target_chat_id), caption)
                 return
             
@@ -202,7 +224,9 @@ class TelegramSender:
             if metrics:
                 insights = await self.insights_generator.generate_single_pool_insights(metrics, pool_data, max_bullets=4)
                 if insights:
-                    caption += "\n\nInsights:\n" + insights
+                    # Escape Markdown special characters in insights
+                    escaped_insights = self._escape_markdown(insights)
+                    caption += "\n\nInsights:\n" + escaped_insights
             
             # Truncate to Telegram limit (1024 chars)
             caption = self._truncate_caption(caption, max_length=1024)
@@ -329,7 +353,9 @@ class TelegramSender:
             if metrics:
                 insights = await self.insights_generator.generate_multi_pool_insights(metrics, pools_data, max_bullets=3)
                 if insights:
-                    caption += "\n\nInsights:\n" + insights
+                    # Escape Markdown special characters in insights
+                    escaped_insights = self._escape_markdown(insights)
+                    caption += "\n\nInsights:\n" + escaped_insights
             
             # Truncate to Telegram limit (1024 chars)
             caption = self._truncate_caption(caption, max_length=1024)

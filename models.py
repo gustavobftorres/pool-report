@@ -49,6 +49,11 @@ class ReportRequest(BaseModel):
         description="Optional Telegram chat ID to send report to (overrides env variable)",
         examples=["123456789"]
     )
+    export_format: str | None = Field(
+        default=None,
+        description="Export format: 'excel', 'csv', or 'both'",
+        examples=["excel", "csv", "both"]
+    )
     
     # For backwards compatibility, also accept single pool_address
     @classmethod
@@ -86,6 +91,10 @@ class ReportResponse(BaseModel):
         ...,
         description="Address of the pool that was analyzed"
     )
+    export_files: dict[str, str] | None = Field(
+        default=None,
+        description="Paths to exported data files (if export was requested)"
+    )
 
 
 class HealthResponse(BaseModel):
@@ -121,6 +130,7 @@ class PoolMetrics(BaseModel):
     
     # Static metrics
     pool_type: str  
+    boosted_type: str = ""  # Boosted pool type (AAVE, EULER, etc.) or empty string
     swap_fee: float 
     is_core_pool: bool = False
     

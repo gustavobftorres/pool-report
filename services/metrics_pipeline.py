@@ -11,6 +11,11 @@ from typing import Any, Dict, List, Optional
 from services.balancer_api import BalancerAPI
 from services.dex_benchmarker import DEXBenchmarker
 from services.dune_metrics import DuneMetricsService, METRIC_GROUP_NAMES
+from services.boosted_pool_analyzer import (
+    is_pool_boosted,
+    is_100_percent_boosted,
+    get_underlying_tokens,
+)
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -227,7 +232,25 @@ class MetricsPipeline:
         if main_token_symbol:
             print(f"   Main token symbol: {main_token_symbol}")
         
-        tokens = self._extract_tokens_for_benchmark(pool_data)
+        # Check if pool is boosted and needs underlying token extraction
+        try:
+            if is_pool_boosted(pool_data):
+                print("   ⚠️  Detected boosted pool")
+                if is_100_percent_boosted(pool_data):
+                    print("   🔄 Pool is 100% boosted - extracting underlying tokens")
+                    underlying_tokens = get_underlying_tokens(pool_data)
+                    # Convert to addresses list for compatibility
+                    tokens = [t.get("address") for t in underlying_tokens if t.get("address")]
+                    print(f"   ✅ Using underlying tokens: {[t.get('symbol') for t in underlying_tokens]}")
+                else:
+                    print("   ℹ️  Pool is partially boosted - using standard extraction")
+                    tokens = self._extract_tokens_for_benchmark(pool_data)
+            else:
+                tokens = self._extract_tokens_for_benchmark(pool_data)
+        except Exception as e:
+            print(f"   ⚠️  Error analyzing boosted pool: {e}")
+            print("   ℹ️  Falling back to standard token extraction")
+            tokens = self._extract_tokens_for_benchmark(pool_data)
         if len(tokens) < 2:
             print(
                 f"⚠️  Could not extract 2 tokens from pool data. Found: {len(tokens)}"

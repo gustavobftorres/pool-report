@@ -5,6 +5,7 @@ Analyzes current metrics vs 15 days ago.
 from datetime import datetime, timedelta
 from typing import Dict, Any
 from services.balancer_api import BalancerAPI
+from services.boosted_pool_analyzer import get_boosted_pool_type
 from models import PoolMetrics, MultiPoolMetrics
 
 
@@ -298,6 +299,9 @@ class MetricsCalculator:
         # Extract static metrics (pool properties)
         static_metrics = self._extract_static_metrics(current_pool)
         
+        # Determine boosted pool type
+        boosted_type = get_boosted_pool_type(current_pool)
+        
         # Extract dynamic metrics (time-dependent)
         dynamic_metrics = self._extract_dynamic_metrics(current_pool, snapshot_15d_ago)
         
@@ -316,6 +320,7 @@ class MetricsCalculator:
             pool_url=pool_url,
             # Static metrics
             pool_type=static_metrics["pool_type"],
+            boosted_type=boosted_type,
             swap_fee=static_metrics["swap_fee"],
             is_core_pool=static_metrics["is_core_pool"],
             token_weights=static_metrics["token_weights"],

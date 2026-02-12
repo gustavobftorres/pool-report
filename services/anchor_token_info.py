@@ -154,24 +154,39 @@ class AnchorTokenInfo:
         
         # 4. Debug: Save to CSV if requested
         if debug and not df_result.empty:
-            self.save_to_csv(df_result)
+            self.save_to_csv(df_result, token_address=token_address)
                 
         return df_result
 
-    def save_to_csv(self, df: pd.DataFrame, filename: str = "anchor_token_info.csv") -> str:
+    def save_to_csv(self, df: pd.DataFrame, filename: str | None = None, token_address: str | None = None) -> str:
         """
-        Saves the DataFrame to a CSV file.
+        Saves the DataFrame to a CSV file with timestamped naming.
         
         Args:
             df: The DataFrame to save.
-            filename: The destination filename.
+            filename: Optional custom filename. If None, generates timestamped name.
+            token_address: Token address to include in filename (first 8 chars).
             
         Returns:
             The path to the saved file.
         """
-        df.to_csv(filename, index=False)
-        print(f"📝 Anchor token info saved to {filename}")
-        return filename
+        from pathlib import Path
+        
+        # Generate filename if not provided
+        if not filename:
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            token_symbol = self._resolve_token_symbol(token_address) if token_address else "TOKEN"
+            addr_short = token_address[:10] if token_address else "unknown"
+            filename = f"anchor_token_{token_symbol}_{addr_short}_{timestamp}.csv"
+        
+        # Save to exports directory
+        export_dir = Path("exports")
+        export_dir.mkdir(exist_ok=True)
+        filepath = export_dir / filename
+        
+        df.to_csv(filepath, index=False)
+        print(f"📝 Anchor token info saved to {filepath}")
+        return str(filepath)
 
     async def _get_lending_markets(self, token_address: str) -> List[Dict[str, Any]]:
         """Fetch lending market yields from DefiLlama."""

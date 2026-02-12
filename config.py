@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     dune_query_timeout: float = 60.0
     dune_anchor_volume_query_id: int | None = None
     
+    # CoinGecko API (no key required for free tier)
+    coingecko_rate_limit: int = 50  # calls per minute
+    
     # Optional default pool
     default_pool_address: str | None = None
     

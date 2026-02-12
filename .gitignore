@@ -62,6 +62,10 @@ temp_images/
 # Media
 *.pdf
 *.csv
+*.xlsx
+
+# Export files
+exports/
 
 # Personal
 AI_Agent_files
