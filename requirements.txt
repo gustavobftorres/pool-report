@@ -7,9 +7,7 @@ pydantic-settings>=2.1.0
 email-validator>=2.0.0
 python-dotenv>=1.0.0
 html2image>=2.0.4
-<<<<<<< HEAD
 requests>=2.31.0
-=======
 psycopg2-binary>=2.9.9
 sqlalchemy>=2.0.25
 alembic>=1.13.1
@@ -18,4 +16,6 @@ pandas>=2.2.0
 openai>=1.0.0
 dune-client>=1.0.0
 openpyxl>=3.1.0
->>>>>>> @gbr/feat/takeaways
+
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
