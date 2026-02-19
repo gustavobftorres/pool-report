@@ -138,6 +138,7 @@ def test_fetch_pools_for_token_gecko_only_success():
                 "reserve_in_usd": "50000000",
                 "fdv_usd": "51767550019.92",
                 "market_cap_usd": "73902394902.78",
+                "token_price_usd": "1.00109584945026",
             },
             "relationships": {"dex": {"data": {"id": "uniswap_v3"}}},
         },
@@ -156,6 +157,7 @@ def test_fetch_pools_for_token_gecko_only_success():
     assert pools[0]["fees"] == 1000000.5 * 0.05 / 100  # 0.05% of volume
     assert pools[0]["fdv_usd"] == 51767550019.92
     assert pools[0]["market_cap_usd"] == 73902394902.78
+    assert pools[0]["price_usd"] == 1.00109584945026
 
 
 def test_fetch_pools_for_token_gecko_only_invalid_input():

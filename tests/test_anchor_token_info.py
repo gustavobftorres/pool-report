@@ -25,6 +25,7 @@ MOCK_GECKO_POOLS = [
         "tvl_usd": 84946090.35,
         "fdv_usd": 51767550019.92,
         "market_cap_usd": 73902394902.78,
+        "price_usd": 1.00109584945026,
     },
     {
         "protocol": "curve",
@@ -38,6 +39,7 @@ MOCK_GECKO_POOLS = [
         "tvl_usd": 162024857.49,
         "fdv_usd": 51504569749.97,
         "market_cap_usd": 73526969143.72,
+        "price_usd": 0.996010260956578,
     },
 ]
 
@@ -67,6 +69,7 @@ async def test_get_token_data_success(anchor_service):
     assert "dex" in df.columns
     assert "fdv_usd" in df.columns
     assert "market_cap_usd" in df.columns
+    assert "price_usd" in df.columns
     assert df.iloc[0]["protocol"] == "uniswap_v3"
     assert df.iloc[0]["pool_address"] == "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640"
     assert df.iloc[0]["volume"] == 236905677.62
