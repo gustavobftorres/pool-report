@@ -32,6 +32,7 @@ class AnchorTokenInfo:
         "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599": "WBTC",
         "0xae78736cd615f374d3085123a210448e74fc6393": "rETH",
         "0xbe9895146f7af43049ca1c1ae358b0541ea49704": "cbETH",
+        "0xd11c452fc99cf405034ee446803b6f6c1f6d5ed8": "tETH",  # Treehouse ETH
     }
     
     """
@@ -150,9 +151,10 @@ class AnchorTokenInfo:
             best_market = df_lending.iloc[0].to_dict()
             for col, val in best_market.items():
                 if col not in df_result.columns:
+                    if isinstance(val, (list, dict)):
+                        val = str(val)
                     df_result[f"best_market_{col}"] = val
         
-        # 4. Debug: Save to CSV if requested
         if debug and not df_result.empty:
             self.save_to_csv(df_result, token_address=token_address)
                 
@@ -257,7 +259,7 @@ class AnchorTokenInfo:
         token_symbol = self._resolve_token_symbol(token_address)
 
         print(f"  → Fetching historical volume from Dune (Query {query_id})...")
-        try:
+        try: 
             # Reusing the logic from DuneMetricsService
             result = await self.dune_service._execute_query(
                 query_id=query_id,
