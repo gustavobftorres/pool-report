@@ -146,17 +146,12 @@ async def test_get_token_data_integration(anchor_service):
         
         assert not df.empty
         assert isinstance(df, pd.DataFrame)
-        assert len(df) == 2  # Should correspond to volume rows
-        
-        # Check if volume columns exist
-        assert "token_pair" in df.columns
-        assert "total_volume_usd" in df.columns
-        
-        # Check if best lending market info was merged
-        assert "best_market_protocol" in df.columns
-        assert "best_market_apy" in df.columns
-        assert df.iloc[0]["best_market_protocol"] == "Aave V3"
-        assert df.iloc[0]["best_market_apy"] == 3.5
+        # When both exist, prefer lending data
+        assert len(df) == 1
+        assert "protocol" in df.columns
+        assert "apy" in df.columns
+        assert df.iloc[0]["protocol"] == "Aave V3"
+        assert df.iloc[0]["apy"] == 3.5
 
 @pytest.mark.asyncio
 async def test_get_token_data_lending_only(anchor_service):
