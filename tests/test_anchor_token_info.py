@@ -1,224 +1,149 @@
 """
 Tests for the AnchorTokenInfo service.
-Mocks external API calls to DefiLlama and Dune Analytics.
+Mocks GeckoTerminal API calls (GeckoTerminal-only flow).
 """
 import pytest
 import pandas as pd
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import patch
 
 from services.anchor_token_info import AnchorTokenInfo
 
 # Sample Mock Data
-MOCK_TOKEN_ADDRESS = "0xExampleTokenAddress"
+MOCK_TOKEN_ADDRESS = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
 MOCK_BLOCKCHAIN = "ethereum"
 
-MOCK_DEFILLAMA_RESPONSE = {
-    "data": [
-        {
-            "chain": "Ethereum",
-            "project": "Aave V3",
-            "symbol": "WETH",
-            "tvlUsd": 1_000_000,
-            "apy": 3.5,
-            "underlyingTokens": [MOCK_TOKEN_ADDRESS],
-            "pool": "pool-uuid-1"
-        },
-        {
-            "chain": "Ethereum",
-            "project": "Compound V3",
-            "symbol": "cWETH",
-            "tvlUsd": 500_000,
-            "apy": 2.1,
-            "underlyingTokens": [MOCK_TOKEN_ADDRESS],
-            "pool": "pool-uuid-2"
-        },
-        {
-            "chain": "Arbitrum", # Different chain to test filtering/sorting
-            "project": "Radiant",
-            "symbol": "rdntETH",
-            "tvlUsd": 100_000,
-            "apy": 5.0,
-            "underlyingTokens": [MOCK_TOKEN_ADDRESS],
-            "pool": "pool-uuid-3"
-        }
-    ]
-}
-
-MOCK_DUNE_ROWS = [
+MOCK_GECKO_POOLS = [
     {
-        "blockchain": "ethereum",
-        "project_version": "2",  # Updated to match new Dune schema (version field returns '2', '3', etc.)
-        "token_pair": "USDC-WETH",  # Pair format: OTHER_TOKEN-ANCHOR_TOKEN
-        "total_volume_usd": 50000.0,
-        "swap_count": 100
+        "protocol": "uniswap_v3",
+        "chain": "ethereum",
+        "symbol": "WETH / USDC 0.05%",
+        "pool_address": "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
+        "volume": 236905677.62,
+        "fees": 118452.84,
+        "liquidity": 84946090.35,
+        "dex": "uniswap_v3",
+        "tvl_usd": 84946090.35,
+        "fdv_usd": 51767550019.92,
+        "market_cap_usd": 73902394902.78,
     },
     {
-        "blockchain": "ethereum",
-        "project_version": "3",  # Updated to match new Dune schema
-        "token_pair": "DAI-WETH",
-        "total_volume_usd": 75000.0,
-        "swap_count": 150
-    }
+        "protocol": "curve",
+        "chain": "ethereum",
+        "symbol": "DAI / USDC / USDT",
+        "pool_address": "0xbebc44782c7db0a1a60cb6fe97d0b483032ff1c7",
+        "volume": 3909393.14,
+        "fees": None,
+        "liquidity": 162024857.49,
+        "dex": "curve",
+        "tvl_usd": 162024857.49,
+        "fdv_usd": 51504569749.97,
+        "market_cap_usd": 73526969143.72,
+    },
 ]
+
 
 @pytest.fixture
 def anchor_service():
-    """Fixture to initialize the service with mocked dependencies."""
-    with patch("services.anchor_token_info.BalancerAPI"), \
-         patch("services.anchor_token_info.DuneMetricsService") as MockDune:
-        
-        service = AnchorTokenInfo()
-        # Mock the internal Dune service instance
-        service.dune_service = MockDune.return_value
-        service.dune_service._execute_query = AsyncMock(return_value={"rows": []})
-        service.dune_available = True
-        return service
+    """Fixture to initialize the service."""
+    return AnchorTokenInfo()
+
 
 @pytest.mark.asyncio
-async def test_get_lending_markets_success(anchor_service):
-    """Test fetching and filtering lending markets from DefiLlama."""
-    
-    # Mock httpx.AsyncClient.get
-    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = MOCK_DEFILLAMA_RESPONSE
-        mock_get.return_value = mock_response
+async def test_get_token_data_success(anchor_service):
+    """Test fetching pools from GeckoTerminal."""
+    with patch(
+        "services.anchor_token_info.fetch_pools_for_token_gecko_only",
+        return_value=MOCK_GECKO_POOLS,
+    ):
+        df = await anchor_service.get_token_data(MOCK_TOKEN_ADDRESS, MOCK_BLOCKCHAIN)
 
-        markets = await anchor_service._get_lending_markets(MOCK_TOKEN_ADDRESS)
-        
-        assert len(markets) == 3
-        # Check sorting by APY descending (Radiant 5.0 > Aave 3.5 > Compound 2.1)
-        assert markets[0]["protocol"] == "Radiant"
-        assert markets[0]["apy"] == 5.0
-        assert markets[1]["protocol"] == "Aave V3"
-        assert markets[2]["protocol"] == "Compound V3"
+    assert not df.empty
+    assert len(df) == 2
+    assert "protocol" in df.columns
+    assert "pool_address" in df.columns
+    assert "volume" in df.columns
+    assert "fees" in df.columns
+    assert "liquidity" in df.columns
+    assert "dex" in df.columns
+    assert "fdv_usd" in df.columns
+    assert "market_cap_usd" in df.columns
+    assert df.iloc[0]["protocol"] == "uniswap_v3"
+    assert df.iloc[0]["pool_address"] == "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640"
+    assert df.iloc[0]["volume"] == 236905677.62
+    # All pools have pool_address - no empty rows
+    assert df["pool_address"].notna().all()
 
-@pytest.mark.asyncio
-async def test_get_historical_volume_success(anchor_service):
-    """Test fetching volume data from Dune."""
-    
-    # Setup mock return for Dune
-    anchor_service.dune_service._execute_query.return_value = {"rows": MOCK_DUNE_ROWS}
-    
-    # Mock settings to ensure query ID is present
-    with patch("services.anchor_token_info.settings") as mock_settings:
-        mock_settings.dune_anchor_volume_query_id = 12345
-        
-        volume_data = await anchor_service._get_historical_volume(MOCK_TOKEN_ADDRESS, MOCK_BLOCKCHAIN)
-        
-        assert len(volume_data) == 2
-        assert volume_data[0]["token_pair"] == "USDC-WETH"
-        assert volume_data[0]["total_volume_usd"] == 50000.0
-        assert volume_data[0]["project_version"] == "2"  # Updated to match new schema
 
 @pytest.mark.asyncio
-async def test_get_historical_volume_no_query_id(anchor_service):
-    """Test behavior when no Dune Query ID is configured."""
-    
-    with patch("services.anchor_token_info.settings") as mock_settings:
-        # Simulate missing query ID
-        del mock_settings.dune_anchor_volume_query_id 
-        # Alternatively ensure getattr returns None by unsetting it on the mock object if needed, 
-        # but the safest way for a mock object is setting it to None explicitly
-        mock_settings.dune_anchor_volume_query_id = None
-        
-        volume_data = await anchor_service._get_historical_volume(MOCK_TOKEN_ADDRESS, MOCK_BLOCKCHAIN)
-        assert volume_data == []
-        # Ensure execute_query was NOT called
-        anchor_service.dune_service._execute_query.assert_not_called()
+async def test_get_token_data_empty(anchor_service):
+    """Test when no pools are found."""
+    with patch(
+        "services.anchor_token_info.fetch_pools_for_token_gecko_only",
+        return_value=[],
+    ):
+        df = await anchor_service.get_token_data(MOCK_TOKEN_ADDRESS, MOCK_BLOCKCHAIN)
+
+    assert df.empty
+
 
 @pytest.mark.asyncio
 async def test_get_token_data_integration(anchor_service):
-    """Test the main orchestrator merging logic."""
-    
-    # Mock both sub-calls
-    with patch.object(anchor_service, "_get_lending_markets", new_callable=AsyncMock) as mock_lending, \
-         patch.object(anchor_service, "_get_historical_volume", new_callable=AsyncMock) as mock_volume:
-        
-        # Scenario: We have both lending and volume data
-        mock_lending.return_value = [
-            {"protocol": "Aave V3", "apy": 3.5, "tvl_usd": 1000000}
-        ]
-        mock_volume.return_value = MOCK_DUNE_ROWS
-        
+    """Test the main orchestrator with GeckoTerminal data."""
+    with patch(
+        "services.anchor_token_info.fetch_pools_for_token_gecko_only",
+        return_value=[
+            {"protocol": "uniswap_v3", "pool_address": "0xabc", "volume": 1000, "fees": 5}
+        ],
+    ):
         df = await anchor_service.get_token_data(MOCK_TOKEN_ADDRESS, MOCK_BLOCKCHAIN)
-        
-        assert not df.empty
-        assert isinstance(df, pd.DataFrame)
-        # When both exist, prefer lending data
-        assert len(df) == 1
-        assert "protocol" in df.columns
-        assert "apy" in df.columns
-        assert df.iloc[0]["protocol"] == "Aave V3"
-        assert df.iloc[0]["apy"] == 3.5
 
-@pytest.mark.asyncio
-async def test_get_token_data_lending_only(anchor_service):
-    """Test orchestrator when only lending data is available (no volume)."""
-    
-    with patch.object(anchor_service, "_get_lending_markets", new_callable=AsyncMock) as mock_lending, \
-         patch.object(anchor_service, "_get_historical_volume", new_callable=AsyncMock) as mock_volume:
-        
-        mock_lending.return_value = [{"protocol": "Aave V3", "apy": 3.5}]
-        mock_volume.return_value = []
-        
-        df = await anchor_service.get_token_data(MOCK_TOKEN_ADDRESS, MOCK_BLOCKCHAIN)
-        
-        assert not df.empty
-        assert len(df) == 1
-        assert "protocol" in df.columns
-        assert "apy" in df.columns
-        assert "total_volume_usd" not in df.columns  # Volume cols shouldn't exist
+    assert not df.empty
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 1
+    assert "protocol" in df.columns
+    assert "pool_address" in df.columns
+    assert df.iloc[0]["protocol"] == "uniswap_v3"
+    assert df.iloc[0]["pool_address"] == "0xabc"
+    assert df.iloc[0]["volume"] == 1000
 
-@pytest.mark.asyncio
-async def test_get_token_data_volume_only(anchor_service):
-    """Test orchestrator when only volume data is available (no lending)."""
-    
-    with patch.object(anchor_service, "_get_lending_markets", new_callable=AsyncMock) as mock_lending, \
-         patch.object(anchor_service, "_get_historical_volume", new_callable=AsyncMock) as mock_volume:
-        
-        mock_lending.return_value = []
-        mock_volume.return_value = MOCK_DUNE_ROWS
-        
-        df = await anchor_service.get_token_data(MOCK_TOKEN_ADDRESS, MOCK_BLOCKCHAIN)
-        
-        assert not df.empty
-        assert len(df) == 2
-        assert "token_pair" in df.columns
-        # Best market columns should NOT exist
-        assert "best_market_project" not in df.columns
-
-def test_get_summary_stats(anchor_service):
-    """Test summary statistics generation."""
-    
-    data = {
-        "apy": [3.5, 2.1, 5.0],
-        "total_volume_usd": [100.0, 200.0, 300.0]
-    }
-    df = pd.DataFrame(data)
-    
-    stats = anchor_service.get_summary_stats(df)
-    
-    assert stats["total_markets"] == 3
-    assert stats["max_apy"] == 5.0
-    assert abs(stats["avg_apy"] - 3.53) < 0.1 # approx 3.533
-    assert stats["cumulative_volume"] == 600.0
 
 @pytest.mark.asyncio
 async def test_get_token_data_debug_exports_to_spreadsheet(anchor_service):
     """Test that setting debug=True exports to Google Spreadsheet."""
-    with patch.object(anchor_service, "_get_lending_markets", new_callable=AsyncMock) as mock_lending, \
-         patch.object(anchor_service, "_get_historical_volume", new_callable=AsyncMock) as mock_volume, \
-         patch("services.spreadsheet_service.export_dataframe_to_sheet") as mock_export:
+    with patch(
+        "services.anchor_token_info.fetch_pools_for_token_gecko_only",
+        return_value=[{"protocol": "curve", "pool_address": "0x123", "volume": 500}],
+    ), patch("services.spreadsheet_service.export_dataframe_to_sheet") as mock_export:
+        df = await anchor_service.get_token_data(
+            MOCK_TOKEN_ADDRESS, MOCK_BLOCKCHAIN, debug=True
+        )
 
-        mock_lending.return_value = [{"protocol": "Aave V3", "apy": 3.5}]
-        mock_volume.return_value = []
+    mock_export.assert_called_once()
+    call_args = mock_export.call_args
+    assert call_args[0][0] is df
+    assert not df.empty
+    assert df.iloc[0]["protocol"] == "curve"
 
-        df = await anchor_service.get_token_data(MOCK_TOKEN_ADDRESS, MOCK_BLOCKCHAIN, debug=True)
 
-        mock_export.assert_called_once()
-        call_args = mock_export.call_args
-        assert call_args[0][0] is df
-        assert not df.empty
-        assert df.iloc[0]["protocol"] == "Aave V3"
+def test_get_summary_stats(anchor_service):
+    """Test summary statistics generation."""
+    data = {
+        "volume": [100.0, 200.0, 300.0],
+        "fdv_usd": [1e9, 2e9, 3e9],
+    }
+    df = pd.DataFrame(data)
+
+    stats = anchor_service.get_summary_stats(df)
+
+    assert stats["total_markets"] == 3
+    assert stats["cumulative_volume"] == 600.0
+
+
+def test_get_summary_stats_with_total_volume_usd(anchor_service):
+    """Test summary stats fallback to total_volume_usd column."""
+    data = {"total_volume_usd": [100.0, 200.0]}
+    df = pd.DataFrame(data)
+
+    stats = anchor_service.get_summary_stats(df)
+
+    assert stats["cumulative_volume"] == 300.0

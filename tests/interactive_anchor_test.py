@@ -1,6 +1,7 @@
 """
 Interactive test for AnchorTokenInfo.
-Fetches REAL data from DefiLlama and exports to Google Spreadsheet.
+Fetches REAL data from GeckoTerminal and exports to Google Spreadsheet.
+All pools have pool_address, volume, fees, liquidity, dex.
 """
 import asyncio
 import os

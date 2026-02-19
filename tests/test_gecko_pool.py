@@ -10,6 +10,7 @@ from services.gecko_pool import (
     DEX_PROTOCOL_MAPPING,
     LENDING_PROTOCOLS,
     fetch_pools,
+    fetch_pools_for_token_gecko_only,
     get_pool_address_for_big_dex,
     get_pool_address_for_protocol,
     is_resolvable_protocol,
@@ -123,6 +124,45 @@ def test_get_pool_address_for_protocol_unknown_protocol_returns_none():
     """Test unknown protocol returns None."""
     gecko_pools = [{"attributes": {"address": "0xabc"}, "relationships": {}}]
     assert get_pool_address_for_protocol(gecko_pools, "unknown-dex") is None
+
+
+def test_fetch_pools_for_token_gecko_only_success():
+    """Test fetch_pools_for_token_gecko_only returns pools with full data."""
+    mock_data = [
+        {
+            "id": "eth_0x88e6",
+            "attributes": {
+                "address": "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
+                "name": "WETH / USDC 0.05%",
+                "volume_usd": {"h24": "1000000.5"},
+                "reserve_in_usd": "50000000",
+                "fdv_usd": "51767550019.92",
+                "market_cap_usd": "73902394902.78",
+            },
+            "relationships": {"dex": {"data": {"id": "uniswap_v3"}}},
+        },
+    ]
+    with patch("httpx.get") as mock_get:
+        mock_get.return_value.json.return_value = {"data": mock_data}
+        mock_get.return_value.raise_for_status = lambda: None
+        pools = fetch_pools_for_token_gecko_only(
+            "ethereum", "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+        )
+    assert len(pools) == 1
+    assert pools[0]["pool_address"] == "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640"
+    assert pools[0]["volume"] == 1000000.5
+    assert pools[0]["liquidity"] == 50000000.0
+    assert pools[0]["dex"] == "uniswap_v3"
+    assert pools[0]["fees"] == 1000000.5 * 0.05 / 100  # 0.05% of volume
+    assert pools[0]["fdv_usd"] == 51767550019.92
+    assert pools[0]["market_cap_usd"] == 73902394902.78
+
+
+def test_fetch_pools_for_token_gecko_only_invalid_input():
+    """Test fetch_pools_for_token_gecko_only returns [] for invalid inputs."""
+    assert fetch_pools_for_token_gecko_only("", "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48") == []
+    assert fetch_pools_for_token_gecko_only("ethereum", "") == []
+    assert fetch_pools_for_token_gecko_only("UnknownChain", "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48") == []
 
 
 def test_is_resolvable_protocol():
