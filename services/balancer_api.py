@@ -124,6 +124,24 @@ class BalancerAPI:
             ("xlayer", "XLAYER"),
         ]
     
+    def _normalize_v3_pool_tokens(self, pool: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize V3 poolTokens to allTokens format for backward compatibility.
+        Downstream code (metrics_calculator, insights_generator, etc.) expects allTokens.
+        """
+        pool_tokens = pool.get("poolTokens", [])
+        if pool_tokens and "allTokens" not in pool:
+            pool["allTokens"] = [
+                {
+                    "address": t.get("address"),
+                    "symbol": t.get("symbol"),
+                    "name": t.get("name") or t.get("symbol", ""),
+                    "weight": t.get("weight"),
+                }
+                for t in pool_tokens
+            ]
+        return pool
+    
     async def get_current_pool_data(self, pool_address: str, blockchain: str | None = None) -> Dict[str, Any]:
         """
         Get current pool data from Balancer GraphQL endpoint.
@@ -166,7 +184,7 @@ class BalancerAPI:
             except Exception as e:
                 print(f"⚠️  V2 query error for {pool_address}: {str(e)}")
         
-        #V3 API format
+        #V3 API format - uses poolTokens (allTokens was removed in V3 API schema)
         try:
             query = """
             query GetPool($id: String!, $chain: GqlChain!) {
@@ -189,7 +207,7 @@ class BalancerAPI:
                     type
                   }
                 }
-                allTokens {
+                poolTokens {
                   address
                   symbol
                   name
@@ -219,6 +237,8 @@ class BalancerAPI:
                             volume24h_api = dynamic_data.get("volume24h", "N/A")
                             fees24h_api = dynamic_data.get("fees24h", "N/A")
                             print(f"   📊 API returned - volume24h: {volume24h_api}, fees24h: {fees24h_api}")
+                        # Normalize poolTokens to allTokens for backward compatibility with downstream code
+                        pool = self._normalize_v3_pool_tokens(pool)
                         # Add metadata for URL generation
                         pool['_api_version'] = 'v3'
                         pool['_blockchain'] = blockchain_name
@@ -245,6 +265,8 @@ class BalancerAPI:
                     if tags:
                         print(f"🏷️  Pool tags: {tags}")
                     
+                    # Normalize poolTokens to allTokens for backward compatibility with downstream code
+                    pool = self._normalize_v3_pool_tokens(pool)
                     # Add metadata for URL generation
                     pool['_api_version'] = 'v3'
                     pool['_blockchain'] = blockchain_name
