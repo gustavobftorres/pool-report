@@ -211,45 +211,19 @@ def test_get_summary_stats(anchor_service):
     assert stats["cumulative_volume"] == 600.0
 
 @pytest.mark.asyncio
-async def test_get_token_data_debug_saves_csv(anchor_service, tmp_path):
-    """Test that setting debug=True saves the CSV file."""
-    from pathlib import Path
-
-    # Use tmp_path for exports so we have a known, isolated location
-    export_dir = tmp_path / "exports"
-    export_dir.mkdir(exist_ok=True)
-
+async def test_get_token_data_debug_exports_to_spreadsheet(anchor_service):
+    """Test that setting debug=True exports to Google Spreadsheet."""
     with patch.object(anchor_service, "_get_lending_markets", new_callable=AsyncMock) as mock_lending, \
          patch.object(anchor_service, "_get_historical_volume", new_callable=AsyncMock) as mock_volume, \
-         patch.object(anchor_service, "save_to_csv", wraps=lambda df, **kw: _save_to_tmp(anchor_service, df, export_dir, **kw)) as mock_save:
+         patch("services.spreadsheet_service.export_dataframe_to_sheet") as mock_export:
 
         mock_lending.return_value = [{"protocol": "Aave V3", "apy": 3.5}]
         mock_volume.return_value = []
 
-        await anchor_service.get_token_data(MOCK_TOKEN_ADDRESS, MOCK_BLOCKCHAIN, debug=True)
+        df = await anchor_service.get_token_data(MOCK_TOKEN_ADDRESS, MOCK_BLOCKCHAIN, debug=True)
 
-        # Verify save_to_csv was called
-        mock_save.assert_called_once()
-
-        # File should be in our tmp export dir
-        matching_files = list(export_dir.glob("anchor_token_TOKEN_0xexamplet_*.csv"))
-        assert len(matching_files) >= 1, f"Expected CSV in {export_dir}, found: {list(export_dir.glob('*.csv'))}"
-        csv_path = matching_files[0]
-
-        # Verify content
-        df_loaded = pd.read_csv(csv_path)
-        assert not df_loaded.empty
-        assert df_loaded.iloc[0]["protocol"] == "Aave V3"
-
-
-def _save_to_tmp(service, df, export_dir, filename=None, token_address=None):
-    """Helper to save CSV to tmp_path during test."""
-    from datetime import datetime, timezone
-    if not filename:
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        token_symbol = service._resolve_token_symbol(token_address) if token_address else "TOKEN"
-        addr_short = token_address[:10] if token_address else "unknown"
-        filename = f"anchor_token_{token_symbol}_{addr_short}_{timestamp}.csv"
-    filepath = export_dir / filename
-    df.to_csv(filepath, index=False)
-    return str(filepath)
+        mock_export.assert_called_once()
+        call_args = mock_export.call_args
+        assert call_args[0][0] is df
+        assert not df.empty
+        assert df.iloc[0]["protocol"] == "Aave V3"
