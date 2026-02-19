@@ -116,7 +116,7 @@ class AnchorTokenInfo:
         Args:
             token_address: The address of the anchor token.
             blockchain: The blockchain network (default: ethereum).
-            debug: If True, saves the resulting DataFrame to a CSV file.
+            debug: If True, exports the resulting DataFrame to Google Spreadsheet.
             
         Returns:
             Pandas DataFrame with aggregated market and performance data.
@@ -156,39 +156,15 @@ class AnchorTokenInfo:
                     df_result[f"best_market_{col}"] = val
         
         if debug and not df_result.empty:
-            self.save_to_csv(df_result, token_address=token_address)
-                
-        return df_result
+            try:
+                from services.spreadsheet_service import export_dataframe_to_sheet
+                export_dataframe_to_sheet(df_result)
+                print("📝 Anchor token info exported to Google Spreadsheet")
+            except Exception as e:
+                logger.error(f"Failed to export to spreadsheet: {e}")
+                raise
 
-    def save_to_csv(self, df: pd.DataFrame, filename: str | None = None, token_address: str | None = None) -> str:
-        """
-        Saves the DataFrame to a CSV file with timestamped naming.
-        
-        Args:
-            df: The DataFrame to save.
-            filename: Optional custom filename. If None, generates timestamped name.
-            token_address: Token address to include in filename (first 8 chars).
-            
-        Returns:
-            The path to the saved file.
-        """
-        from pathlib import Path
-        
-        # Generate filename if not provided
-        if not filename:
-            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-            token_symbol = self._resolve_token_symbol(token_address) if token_address else "TOKEN"
-            addr_short = token_address[:10] if token_address else "unknown"
-            filename = f"anchor_token_{token_symbol}_{addr_short}_{timestamp}.csv"
-        
-        # Save to exports directory
-        export_dir = Path("exports")
-        export_dir.mkdir(exist_ok=True)
-        filepath = export_dir / filename
-        
-        df.to_csv(filepath, index=False)
-        print(f"📝 Anchor token info saved to {filepath}")
-        return str(filepath)
+        return df_result
 
     async def _get_lending_markets(self, token_address: str) -> List[Dict[str, Any]]:
         """Fetch lending market yields from DefiLlama."""
@@ -212,7 +188,7 @@ class AnchorTokenInfo:
                         "apy": p.get('apy'),
                         "tvl_usd": p.get('tvlUsd'),
                         "reward_tokens": p.get('rewardTokens'),
-                        "pool_id": p.get('pool')
+                        "pool_address": _extract_pool_address(p.get('pool'))
                     }
                     for p in data 
                     if p.get('underlyingTokens') and token_address in [t.lower() if t else '' for t in p.get('underlyingTokens', [])]
