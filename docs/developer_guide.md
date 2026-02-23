@@ -32,7 +32,6 @@ services/
 ├── lp_return_calculator.py   # Hold vs Pool profitability analysis
 ├── data_exporter.py          # Excel/CSV export with multi-format support
 ├── telegram_sender.py        # Telegram card generation and delivery
-├── email_sender.py           # Email report delivery
 ├── anchor_token_info.py      # Lending market data from DefiLlama
 ├── dune_metrics.py           # Dune Analytics integration
 └── coingecko_api.py          # Historical price data
@@ -51,7 +50,7 @@ API Request → Main.py → MetricsCalculator → BalancerAPI → Pool Data
                      ↓
          DataExporter (generate Excel/CSV)
                      ↓
-         TelegramSender + EmailSender (deliver reports)
+         TelegramSender (deliver reports)
 ```
 
 ---

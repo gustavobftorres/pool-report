@@ -69,3 +69,6 @@ exports/
 
 # Personal
 AI_Agent_files
+
+# Gspread credentials
+credentials.json

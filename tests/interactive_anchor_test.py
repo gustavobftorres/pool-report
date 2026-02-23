@@ -1,6 +1,7 @@
 """
 Interactive test for AnchorTokenInfo.
-Fetches REAL data from DefiLlama and generates a CSV.
+Fetches REAL data from GeckoTerminal and exports to Google Spreadsheet.
+All pools have pool_address, volume, fees, liquidity, dex.
 """
 import asyncio
 import os
@@ -32,7 +33,7 @@ async def main():
     
     print(f"🚀 Fetching live data for {token_address}...")
     try:
-        # We call get_token_data with debug=True to trigger the CSV generation
+        # We call get_token_data with debug=True to trigger the spreadsheet export
         df = await service.get_token_data(token_address, blockchain, debug=True)
         
         if not df.empty:
@@ -43,7 +44,7 @@ async def main():
             print("Preview (Top 5 rows):")
             print(df.head().to_string())
             
-            print(f"📂 You can now open 'anchor_token_info.csv' to see the full result.")
+            print("📂 Data exported to Google Spreadsheet (Landing markets token info).")
         else:
             print("⚠️  No data found for this token. Check the address and network.")
             

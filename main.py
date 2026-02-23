@@ -11,7 +11,6 @@ import asyncio
 
 from models import ReportRequest, ReportResponse, HealthResponse
 from services.metrics_calculator import MetricsCalculator
-from services.email_sender import EmailSender, EmailSenderError
 from services.balancer_api import BalancerAPIError
 from services.telegram_sender import TelegramSender
 from services.anchor_token_info import AnchorTokenInfo
@@ -454,7 +453,6 @@ async def generate_report(request: ReportRequest):
         
         # Initialize services
         calculator = MetricsCalculator()
-        email_sender = EmailSender()
         telegram_sender = TelegramSender()  # Used as an additional channel for single-pool
         
         # Determine if single or multiple pools
@@ -528,24 +526,7 @@ async def generate_report(request: ReportRequest):
                     pool_info = {"address": addr}
                 pools_data.append(pool_info)
             
-            # Send email
-            print(f"📧 Sending comparison report to {request.recipient_email}...")
-            if request.recipient_email and email_sender.enabled:
-                try:
-                    await email_sender.send_pool_report(
-                        recipient_email=request.recipient_email,
-                        pool_name=f"{len(multi_metrics.pools)} Pools",
-                        metrics_data=metrics_data,
-                        multi_pool=True
-                    )
-                    print("✅ Comparison email report sent successfully!")
-                except EmailSenderError as e:
-                    # Fail-open: continue to Telegram / response even if email fails.
-                    print(f"⚠️  Email sending failed (continuing without email): {str(e)}")
-            else:
-                print("ℹ️  Email disabled or recipient_email missing; skipping email.")
-
-            # Also send Telegram card (secondary channel)
+            # Send Telegram card
             if request.telegram_chat_id:
                 print(f"✈️ Sending Telegram multi-pool Card to Chat ID: {request.telegram_chat_id}...")
                 await telegram_sender.send_multi_pool_report(
@@ -673,23 +654,7 @@ async def generate_report(request: ReportRequest):
                 # Don't fail the whole request
                 metrics_data["parameter_changes"] = None
             
-            # Send email
-            if request.recipient_email and email_sender.enabled:
-                try:
-                    await email_sender.send_pool_report(
-                        recipient_email=request.recipient_email,
-                        pool_name=metrics.pool_name,
-                        metrics_data=metrics_data,
-                        multi_pool=False
-                    )
-                    print("✅ Email report sent successfully!")
-                except EmailSenderError as e:
-                    # Fail-open: continue to Telegram / response even if email fails.
-                    print(f"⚠️  Email sending failed (continuing without email): {str(e)}")
-            else:
-                print("ℹ️  Email disabled or recipient_email missing; skipping email.")
-
-            # Optionally, also send Telegram card (secondary channel)
+            # Optionally, send Telegram card
             if request.telegram_chat_id:
                 print(f"✈️ Sending Telegram Card to Chat ID: {request.telegram_chat_id}...")
                 await telegram_sender.send_pool_report(

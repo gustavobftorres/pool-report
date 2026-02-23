@@ -1,8 +1,14 @@
 """
 Configuration management using Pydantic Settings.
-Loads environment variables from .env file.
+Loads environment variables from .env file in project root.
 """
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolve .env path from project root (parent of config.py)
+_ENV_FILE = Path(__file__).resolve().parent / ".env"
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -55,7 +61,7 @@ class Settings(BaseSettings):
     notion_api_key: str | None = None
     
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_ENV_FILE),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore"
